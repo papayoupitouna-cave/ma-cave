@@ -182,9 +182,9 @@ function stats(){ const L=vins(), n=L.reduce((s,v)=>s+(+v.qte||0),0), val=L.redu
 function chips(el,items,cur,cb){ el.innerHTML=items.map(([k,l])=>`<button class="chip${k===cur?' on':''}" data-k="${esc(k)}">${esc(l)}</button>`).join(''); el.onclick=e=>{const b=e.target.closest('.chip'); if(b) cb(b.dataset.k)}; }
 const okImg = s => typeof s==='string' && s.startsWith('data:image/');
 function card(v){ const s=statut(v);
-  return `<button class="card" data-id="${esc(v.id)}">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="">`:dot(v)}
+  return `<div class="card" role="button" tabindex="0" data-id="${esc(v.id)}">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="">`:dot(v)}
   <div><b>${esc(label(v))}${v.millesime?' '+esc(v.millesime):''}</b><small>${esc([v.appellation,v.region].filter(Boolean).join(' · '))}</small><small>${esc([v.cave,v.emplacement].filter(Boolean).join(' — '))}</small></div>
-  <div class="right"><span class="qte">${+v.qte||0}</span><span class="badge b-${s.k}">${esc(+v.qte?s.t:'Épuisé')}</span></div></button>`; }
+  <div class="right"><div class="qrow"><button class="qb" data-q="-1" data-id="${esc(v.id)}" aria-label="Sortir une bouteille" ${+v.qte?'':'disabled'}>−</button><span class="qte">${+v.qte||0}</span><button class="qb" data-q="1" data-id="${esc(v.id)}" aria-label="Ajouter une bouteille">+</button></div><span class="badge b-${s.k}">${esc(+v.qte?s.t:'Épuisé')}</span></div></div>`; }
 function renderCave(){ const L0=vins(), caves=[...new Set([...R().caves,...L0.map(v=>v.cave).filter(Boolean)])];
   chips($('#fCave'),[['','Toutes les caves'],...caves.map(c=>[c,c])],f.cave,k=>{f.cave=k;renderCave()});
   chips($('#fType'),[['','Toutes couleurs'],...TYPES.map(t=>[t[0],t[1]])],f.type,k=>{f.type=k;renderCave()});
@@ -214,6 +214,25 @@ function renderR(){ $('#cavesList').innerHTML=R().caves.map(c=>`<span class="chi
   $('#alerte').innerHTML = n>=3&&!linked ? '<p class="warn">Vos vins ne sont que sur cet appareil. Reliez Google Drive dans Réglages pour ne jamais les perdre.</p>' : ''; }
 function renderAll(){ stats(); renderCave(); renderBoire(); renderR(); }
 
+/* ================= +1 / −1 et Annuler ================= */
+(()=>{ const st=document.createElement('style'); st.textContent=`.qrow{display:flex;align-items:center;gap:6px}
+.qb{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--soft);color:var(--ink);font-size:22px;font-weight:600;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+.qb:disabled{opacity:.35;cursor:default}.qb.big{width:64px;height:64px;font-size:34px;background:var(--wine);color:#fff;border:0}.qb.big:disabled{background:var(--line)}
+.lnk{border:0;background:none;color:var(--wine2);text-decoration:underline;cursor:pointer;font:inherit;padding:0}
+#undo{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:6px 6px 6px 16px;border-radius:14px;font-size:14px;z-index:41;display:none;align-items:center;gap:4px;width:min(94vw,420px);box-shadow:0 6px 20px rgba(0,0,0,.25)}
+#undo.on{display:flex}#undo span{flex:1}#undo button{border:0;background:transparent;color:var(--gold);font-weight:700;padding:8px 10px;min-height:40px;cursor:pointer;font-size:14px;white-space:nowrap}`; document.head.appendChild(st); })();
+function undoBar(msg, actions){ let e=$('#undo'); if(!e){ e=document.createElement('div'); e.id='undo'; e.setAttribute('role','status'); document.body.appendChild(e); }
+  e.innerHTML=`<span>${esc(msg)}</span>`+actions.map((a,i)=>`<button data-u="${i}">${esc(a[0])}</button>`).join(''); e.classList.add('on');
+  e.onclick=ev=>{ const b=ev.target.closest('[data-u]'); if(!b) return; e.classList.remove('on'); actions[+b.dataset.u][1](); };
+  clearTimeout(e._t); e._t=setTimeout(()=>e.classList.remove('on'),8000); }
+async function quick(id,d){ const v=vins().find(x=>x.id===id); if(!v) return; const old={qte:v.qte,qteEntree:v.qteEntree}; let degId=null;
+  if(d<0){ if(!(+v.qte)) return; degId=uid(); S.degustations.push({id:degId,majLe:now(),vinId:id,vin:label(v)+(v.millesime?' '+v.millesime:''),date:today(),motif:'Dégustée'}); await saveVin(id,{qte:(+v.qte)-1}); }
+  else await saveVin(id,{qte:(+v.qte||0)+1,qteEntree:(+v.qteEntree||+v.qte||0)+1});
+  const open=()=>{ if(current===id&&!$('#sheet').hidden) openFiche(id); }; open(); const n=+v.qte||0;
+  undoBar(d<0?`Bouteille sortie · il en reste ${n}`:`Bouteille ajoutée · ${n} en cave`,[['Annuler',async()=>{ const x=S.vins.find(y=>y.id===id); Object.assign(x,old,{majLe:now()});
+    if(degId){ const i=S.degustations.findIndex(y=>y.id===degId); if(i>=0) S.degustations[i]={id:degId,supprime:true,majLe:now()}; } await persist(); renderAll(); open(); toast('Annulé'); }],
+    ...(degId?[['Noter',()=>openSortie(id,degId)]]:[])]); }
+
 /* ================= Fiche ================= */
 function openSheet(h){ $('#sb').innerHTML=h; $('#sheet').hidden=false; $('.sheet-in').scrollTop=0; }
 function closeSheet(){ $('#sheet').hidden=true; current=null; }
@@ -224,7 +243,7 @@ function dl(rows){ const r=rows.filter(x=>x[1]!==''&&x[1]!==undefined&&x[1]!==nu
 function openFiche(id){ const v=vins().find(x=>x.id===id); if(!v) return closeSheet(); current=id; const s=statut(v), e=v.expert, qq=encodeURIComponent([label(v),v.millesime].filter(Boolean).join(' '));
   const mem=degs().filter(d=>d.vinId===id).sort((a,b)=>String(b.date).localeCompare(a.date));
   openSheet(`<div class="fiche-h">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="Étiquette">`:''}<div><p class="note" style="margin:0">${dot(v)} ${esc((TY[v.type]||TY.rouge)[1])}${v.format?' · '+esc(v.format):''}</p><h2>${esc(label(v))}</h2><p style="margin:4px 0">${esc([v.millesime,v.appellation,v.region].filter(Boolean).join(' · '))}</p><span class="badge b-${s.k}">${esc(s.t)}</span></div></div>
-  <div class="stepper"><button class="btn sec" id="fMoins" ${+v.qte?'':'disabled'}>Sortir une bouteille</button><span class="qte">${+v.qte||0}</span><button class="btn sec" id="fPlus">+ 1</button></div>
+  <div class="stepper"><button class="qb big" data-q="-1" data-id="${esc(id)}" aria-label="Sortir une bouteille" ${+v.qte?'':'disabled'}>−</button><div style="text-align:center;flex:1"><span class="qte">${+v.qte||0}</span><br><span class="note">bouteille${(+v.qte||0)>1?'s':''} en cave</span></div><button class="qb big" data-q="1" data-id="${esc(id)}" aria-label="Ajouter une bouteille">+</button></div><p class="note" style="text-align:center;margin:-4px 0 8px">− quand vous en buvez une · + quand vous en rachetez · <button class="lnk" id="fNoter">sortir avec des notes</button></p>
   ${frise(v)}
   <div class="row"><button class="btn ghost" id="fEdit">Modifier</button><button class="btn ghost" id="fDup">Dupliquer</button><button class="btn" id="fExp">${e?'Mettre à jour la fiche Claude':'Fiche Claude'}</button></div>
   <fieldset><legend>Identité</legend>${dl([['Producteur',v.producteur],['Cépages',v.cepages],['Degré',v.degre?v.degre+' %':'']])}</fieldset>
@@ -238,14 +257,13 @@ function openFiche(id){ const v=vins().find(x=>x.id===id); if(!v) return closeSh
    ${e.temperature||e.carafe?`<p><b>Service :</b> ${esc([e.temperature,e.carafe].filter(Boolean).join(' — '))}</p>`:''}</div>`:''}
   <div class="links"><span class="note">En ligne :</span><a href="https://www.wine-searcher.com/find/${qq}" target="_blank" rel="noopener">Prix (Wine-Searcher)</a><a href="https://www.vivino.com/search/wines?q=${qq}" target="_blank" rel="noopener">Avis (Vivino)</a><a href="https://www.google.com/search?q=${qq}+site%3Ahachette-vins.com" target="_blank" rel="noopener">Guide Hachette</a><a href="https://www.google.com/search?q=${qq}+accords+mets+vins" target="_blank" rel="noopener">Accords</a></div>
   <fieldset><legend>Mémoire gourmande</legend>${mem.length?mem.map(d=>`<div class="memo"><b>${esc(d.date)}</b> <small>${esc(d.motif||'Dégustée')}</small>${d.note?' '+'★'.repeat(+d.note):''}<br>${esc([d.qui&&'avec '+d.qui,d.quoi&&'sur '+d.quoi].filter(Boolean).join(', '))}${d.appreciation?`<br><small>${esc(d.appreciation)}</small>`:''}</div>`).join(''):'<p class="note">Aucune bouteille ouverte pour l’instant.</p>'}</fieldset>
-  <button class="btn danger" id="fDel" style="margin-top:18px">Supprimer ce vin</button>`);
-  $('#fPlus').onclick=async()=>{ await saveVin(id,{qte:(+v.qte||0)+1,qteEntree:(+v.qteEntree||+v.qte||0)+1}); toast('Une bouteille ajoutée'); openFiche(id); };
-  $('#fMoins').onclick=()=>openSortie(id); $('#fEdit').onclick=()=>openForm(v);
+  <button class="btn danger" id="fDel" style="margin-top:18px">Supprimer la fiche (erreur de saisie)</button>`);
+  $('#fNoter').onclick=()=>openSortie(id); $('#fEdit').onclick=()=>openForm(v);
   $('#fDup').onclick=()=>{ const c={...v}; delete c.id; delete c.creeLe; c.millesime=''; c.emplacement=''; openForm(c,'Dupliquer : changez le millésime, la quantité ou l’emplacement'); };
   $('#fExp').onclick=()=>openClaude([v]);
-  $('#fDel').onclick=()=>{ const b=$('#fDel'); if(b.dataset.ok){ delVin(id); closeSheet(); toast('Vin supprimé'); } else { b.dataset.ok=1; b.textContent='Confirmer la suppression'; } }; }
-function openSortie(id){ const v=vins().find(x=>x.id===id);
-  openSheet(`<h2 style="font-size:30px">Sortir une bouteille</h2><p class="lead">${esc(label(v))} ${esc(v.millesime||'')} — reste ${+v.qte||0}</p>
+  $('#fDel').onclick=()=>{ const b=$('#fDel'); if(b.dataset.ok){ const before=JSON.parse(JSON.stringify(S.vins.find(x=>x.id===id))), dsv=S.degustations.filter(d=>d.vinId===id).map(d=>JSON.parse(JSON.stringify(d))); closeSheet(); delVin(id).then(()=>undoBar('Fiche supprimée',[['Annuler',async()=>{ const t=now(); const i=S.vins.findIndex(x=>x.id===id); S.vins[i]={...before,majLe:t}; for(const d of dsv){ const j=S.degustations.findIndex(x=>x.id===d.id); if(j>=0) S.degustations[j]={...d,majLe:t}; } await persist(); renderAll(); toast('Fiche restaurée'); }]])); } else { b.dataset.ok=1; b.textContent=`Oui, effacer définitivement la fiche${+v.qte?' et ses '+(+v.qte)+' bouteille'+(+v.qte>1?'s':''):''}`; const w=document.createElement('p'); w.className='warn'; w.textContent='Pour une bouteille bue, utilisez plutôt le bouton −. Supprimer efface la fiche entière et son historique.'; b.before(w); } }; }
+function openSortie(id,degId){ const v=vins().find(x=>x.id===id);
+  openSheet(`<h2 style="font-size:30px">${degId?'Noter cette bouteille':'Sortir une bouteille'}</h2><p class="lead">${esc(label(v))} ${esc(v.millesime||'')} — reste ${+v.qte||0}</p>
   <form id="sf" class="grid2"><label>Motif<select name="motif"><option>Dégustée</option><option>Offerte</option><option>Vendue</option><option>Perdue (bouchonnée, cassée…)</option></select></label>
   <label>Servi le<input type="date" name="date" value="${today()}"></label><label>Avec qui<input name="qui"></label><label>Avec quoi<input name="quoi" placeholder="Le plat"></label>
   <label style="grid-column:1/-1">Appréciation<textarea name="appreciation" placeholder="Comment était-il ? Prêt, fermé, à son sommet ?"></textarea></label>
@@ -253,7 +271,9 @@ function openSortie(id){ const v=vins().find(x=>x.id===id);
   <div class="row" style="grid-column:1/-1"><button class="btn">Enregistrer</button><button type="button" class="btn sec" id="sBack">Annuler</button></div></form>`);
   $('#sBack').onclick=()=>openFiche(id);
   $('#sf').onsubmit=async e=>{ e.preventDefault(); const d=Object.fromEntries(new FormData(e.target)); d.vinId=id; d.vin=label(v)+(v.millesime?' '+v.millesime:'');
-    await addDeg(d); await saveVin(id,{qte:Math.max(0,(+v.qte||0)-1)}); toast('Souvenir enregistré'); openFiche(id); }; }
+    if(degId){ const g=S.degustations.find(x=>x.id===degId); if(g) Object.assign(g,d,{majLe:now()}); await persist(); }
+    else { await addDeg(d); await saveVin(id,{qte:Math.max(0,(+v.qte||0)-1)}); }
+    toast('Souvenir enregistré'); openFiche(id); }; }
 
 /* ================= Formulaire ================= */
 const inp=(k,l,v,t='text',x='')=>`<label>${l}<input name="${k}" type="${t}" value="${esc(v??'')}" ${t==='number'?'inputmode="decimal" step="any"':''} ${x}></label>`;
@@ -351,7 +371,8 @@ const VIEWS=['cave','boire','ajout','reglages'];
 function show(v){ if(!VIEWS.includes(v)) v='cave'; document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v)); document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); if(location.hash!=='#'+v) history.replaceState(null,'','#'+v); scrollTo(0,0); if(v==='boire') occasion(); }
 document.querySelector('.tabs').onclick=e=>{ const b=e.target.closest('button'); if(b) show(b.dataset.v); };
 addEventListener('hashchange',()=>show(location.hash.slice(1)));
-document.addEventListener('click',e=>{ const c=e.target.closest('.card[data-id]'); if(c) openFiche(c.dataset.id); });
+document.addEventListener('click',e=>{ const q=e.target.closest('.qb[data-q]'); if(q){ e.stopPropagation(); if(!q.disabled) quick(q.dataset.id,+q.dataset.q); return; } const c=e.target.closest('.card[data-id]'); if(c) openFiche(c.dataset.id); });
+document.addEventListener('keydown',e=>{ if(e.key==='Enter'&&e.target.matches&&e.target.matches('.card[data-id]')) openFiche(e.target.dataset.id); });
 $('#xs').onclick=closeSheet; $('#sheet').onclick=e=>{ if(e.target.id==='sheet') closeSheet(); };
 addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('#sheet').hidden) closeSheet(); });
 $('#q').oninput=()=>{ show('cave'); renderCave(); }; $('#tri').onchange=renderCave;
