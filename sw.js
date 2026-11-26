@@ -1,5 +1,5 @@
 // Ma Cave — fonctionnement hors ligne. Réseau d'abord (mises à jour immédiates), copie locale si hors ligne.
-const VERSION = 'ma-cave-v1.4';
+const VERSION = 'ma-cave-v1.5';
 const FICHIERS = ['./', 'index.html', 'style.css', 'app.js', 'appellations.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FICHIERS.map(f => new Request(f, {cache: 'reload'}))))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(n => n !== VERSION).map(n => caches.delete(n))))); self.clients.claim(); });

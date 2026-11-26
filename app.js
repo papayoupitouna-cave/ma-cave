@@ -26,7 +26,7 @@ const idb = {
   get(k){ return new Promise((ok,ko)=>{ const t=this.db.transaction('kv').objectStore('kv').get(k); t.onsuccess=()=>ok(t.result); t.onerror=()=>ko(t.error); }); },
   set(k,v){ return new Promise((ok,ko)=>{ const tx=this.db.transaction('kv','readwrite'); tx.objectStore('kv').put(v,k); tx.oncomplete=()=>ok(); tx.onerror=()=>ko(tx.error); }); }
 };
-const DEF_R = {budget:15, exception:40, caves:['Cave principale'], majLe:''};
+const DEF_R = {budget:15, exception:30, caves:['Cave principale'], majLe:''};
 let S = {vins:[], degustations:[], reglages:{...DEF_R}};
 const vins = () => S.vins.filter(v=>!v.supprime);
 const degs = () => S.degustations.filter(d=>!d.supprime);
@@ -147,6 +147,10 @@ function statut(v){ const de=+v.de||0, ap=+v.apogee||0, ju=+v.jusqua||0;
   return {k:'pret',t:'Prêt à boire',o:3}; }
 const isExc = v => v.guideNote==='3' || v.guideCC || prixRef(v) >= (+R().exception||40);
 const isBudget = v => { const p=prixRef(v); return p>0 && p<=(+R().budget||15); };
+(()=>{ const st=document.createElement('style'); st.textContent='.prix{font-size:13px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;background:var(--soft);color:var(--ink)}.prix.p-exc{background:var(--gold);color:#fff}.prix.p-bud{color:var(--ok)}.right{gap:5px}'; document.head.appendChild(st); })();
+function prixTag(v,long){ const p=prixRef(v), k=!p?'':p>=(+R().exception||40)?'exc':p<=(+R().budget||15)?'bud':'mid';
+  if(long){ const a=+v.prix; return `<span class="prix p-${k}">${p?'Prix moyen ≈ '+euro(p):'Prix à préciser'}${k==='exc'?' · exception':''}</span>${a&&Math.round(a)!==Math.round(p)?` <span class="note">acheté ${euro(a)}</span>`:''}`; }
+  return `<span class="prix p-${k}" title="Prix moyen estimé">${p?'≈ '+euro(p):'prix ?'}</span>`; }
 const PLATS = [
   [/hu[iî]tre|fruits de mer|coquillage|crustac|langoust|homard|crevette|sushi/i, ['blanc','eff_blanc'], 'les fruits de mer'],
   [/poisson|sole|bar\b|saumon|cabillaud|turbot|truite/i, ['blanc','eff_blanc','rose'], 'le poisson'],
@@ -193,18 +197,18 @@ function chips(el,items,cur,cb){ el.innerHTML=items.map(([k,l])=>`<button class=
 const okImg = s => typeof s==='string' && s.startsWith('data:image/');
 function card(v){ const s=statut(v);
   return `<div class="card" role="button" tabindex="0" data-id="${esc(v.id)}">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="">`:dot(v)}
-  <div><b>${esc(label(v))}${v.millesime?' '+esc(v.millesime):''}</b><small>${esc([v.appellation,v.region].filter(Boolean).join(' · '))}</small><small>${esc([v.cave,v.emplacement].filter(Boolean).join(' — '))}</small></div>
-  <div class="right"><div class="qrow"><button class="qb" data-q="-1" data-id="${esc(v.id)}" aria-label="Sortir une bouteille" ${+v.qte?'':'disabled'}>−</button><span class="qte">${+v.qte||0}</span><button class="qb" data-q="1" data-id="${esc(v.id)}" aria-label="Ajouter une bouteille">+</button></div><span class="badge b-${s.k}">${esc(+v.qte?s.t:'Épuisé')}</span></div></div>`; }
+  <div><b>${esc(label(v))}${v.millesime?' '+esc(v.millesime):''}</b><small>${esc([v.appellation,v.region].filter(Boolean).join(' · '))}</small><small>${esc([v.cave,v.emplacement].filter(Boolean).join(' — '))}</small>${v.noteEntree?`<small><i>${esc(v.noteEntree)}</i></small>`:''}</div>
+  <div class="right"><div class="qrow"><button class="qb" data-q="-1" data-id="${esc(v.id)}" aria-label="Sortir une bouteille" ${+v.qte?'':'disabled'}>−</button><span class="qte">${+v.qte||0}</span><button class="qb" data-q="1" data-id="${esc(v.id)}" aria-label="Ajouter une bouteille">+</button></div>${prixTag(v)}<span class="badge b-${s.k}">${esc(+v.qte?s.t:'Épuisé')}</span></div></div>`; }
 function renderCave(){ const L0=vins(), caves=[...new Set([...R().caves,...L0.map(v=>v.cave).filter(Boolean)])];
   chips($('#fCave'),[['','Toutes les caves'],...caves.map(c=>[c,c])],f.cave,k=>{f.cave=k;renderCave()});
   chips($('#fType'),[['','Toutes couleurs'],...TYPES.map(t=>[t[0],t[1]])],f.type,k=>{f.type=k;renderCave()});
-  chips($('#fStat'),[['','Tous'],['urg','À boire vite'],['apogee','Apogée'],['pret','Prêts'],['attendre','À attendre'],['vide','Épuisés']],f.stat,k=>{f.stat=k;renderCave()});
+  chips($('#fStat'),[['','Tous'],['urg','À boire vite'],['apogee','Apogée'],['pret','Prêts'],['attendre','À attendre'],['exc','Exception'],['vide','Épuisés']],f.stat,k=>{f.stat=k;renderCave()});
   const q=$('#q').value.trim().toLowerCase(), tri=$('#tri').value;
   let L=L0.filter(v=>(!f.cave||v.cave===f.cave)&&(!f.type||v.type===f.type));
-  if(f.stat==='vide') L=L.filter(v=>!(+v.qte)); else { L=L.filter(v=>+v.qte>0); if(f.stat==='urg') L=L.filter(v=>statut(v).o<=1); else if(f.stat) L=L.filter(v=>statut(v).k===f.stat); }
+  if(f.stat==='vide') L=L.filter(v=>!(+v.qte)); else { L=L.filter(v=>+v.qte>0); if(f.stat==='urg') L=L.filter(v=>statut(v).o<=1); else if(f.stat==='exc') L=L.filter(isExc); else if(f.stat) L=L.filter(v=>statut(v).k===f.stat); }
   if(q) L=L.filter(v=>[v.nom,v.cuvee,v.producteur,v.appellation,v.region,v.cepages,v.millesime,v.emplacement,v.lieuAchat].join(' ').toLowerCase().includes(q));
   const by={urgence:(a,b)=>statut(a).o-statut(b).o||(+a.jusqua||9999)-(+b.jusqua||9999),nom:(a,b)=>label(a).localeCompare(label(b),'fr'),mill:(a,b)=>(+a.millesime||0)-(+b.millesime||0),prix:(a,b)=>prixRef(b)-prixRef(a),qte:(a,b)=>(+b.qte||0)-(+a.qte||0)};
-  L.sort(by[tri]);
+  L.sort(f.stat==='exc'&&tri==='urgence'?by.prix:by[tri]);
   $('#liste').innerHTML = L.length ? L.map(card).join('') : (L0.length ? '<div class="empty"><h3>Aucun vin ici</h3>Changez la recherche ou les filtres.</div>' : '<div class="empty"><h3>Votre cave est vide</h3>Touchez <b>+ Ajouter</b> pour saisir vos premières bouteilles, ou importez un tableau.</div>'); }
 function renderBoire(){ chips($('#occ'),OCC,occSel,k=>{occSel=k;renderBoire();occasion()});
   const d=vins().filter(v=>+v.qte>0);
@@ -214,7 +218,7 @@ function renderBoire(){ chips($('#occ'),OCC,occSel,k=>{occSel=k;renderBoire();oc
    ['Vins d’exception prêts',`★★★, coups de cœur ou plus de ${R().exception} € — pour les grands moments.`,d.filter(v=>isExc(v)&&statut(v).k!=='attendre'&&statut(v).k!=='inconnu')],
    ['À laisser dormir','Trop jeunes : patience.',d.filter(v=>statut(v).k==='attendre')],
    ['Garde à préciser','Renseignez la fenêtre de garde (ou demandez-la à Claude) pour recevoir des alertes.',d.filter(v=>statut(v).k==='inconnu')]];
-  $('#boireListes').innerHTML = S2.map(([t,ds,L])=>L.length?`<h2 class="sec">${esc(t)} <span class="note">(${L.length})</span></h2><p class="lead">${esc(ds)}</p><div class="list">${L.sort((a,b)=>(+a.jusqua||9999)-(+b.jusqua||9999)).map(card).join('')}</div>`:'').join('') || '<div class="empty">Ajoutez des bouteilles pour recevoir des conseils.</div>'; }
+  $('#boireListes').innerHTML = S2.map(([t,ds,L])=>L.length?`<h2 class="sec">${esc(t)} <span class="note">(${L.length})</span></h2><p class="lead">${esc(ds)}</p><div class="list">${L.sort(t.startsWith('Vins d’exception')?(a,b)=>prixRef(b)-prixRef(a):(a,b)=>(+a.jusqua||9999)-(+b.jusqua||9999)).map(card).join('')}</div>`:'').join('') || '<div class="empty">Ajoutez des bouteilles pour recevoir des conseils.</div>'; }
 function occasion(){ const res=suggere(occSel,$('#plat').value.trim()), occ=OCC.find(o=>o[0]===occSel)[1];
   $('#occRes').innerHTML = `<div class="expert" style="margin-top:14px"><h3 style="font-size:24px">Pour « ${esc(occ)} »</h3>${res.length?`<div class="list">${res.map(x=>card(x.v)+`<p style="margin:0 0 6px" class="note">${esc(x.pq.join(' · ')||'bon choix pour l’occasion')}${x.v.temp?' · servir à '+esc(x.v.temp):''}${x.v.carafe?' · '+esc(x.v.carafe):''}</p>`).join('')}</div>`:'<p>Rien dans la cave ne convient vraiment à cette occasion.</p>'}</div>`; }
 function renderR(){ $('#cavesList').innerHTML=R().caves.map(c=>`<span class="chip">${esc(c)} <button data-c="${esc(c)}" aria-label="Retirer ${esc(c)}" style="border:0;background:none;cursor:pointer;color:var(--mut)">×</button></span>`).join('');
@@ -252,12 +256,12 @@ function frise(v){ const de=+v.de, ju=+v.jusqua; if(!de||!ju||ju<de) return ''; 
 function dl(rows){ const r=rows.filter(x=>x[1]!==''&&x[1]!==undefined&&x[1]!==null&&x[1]!==false); return r.length?`<dl>${r.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`:'<p class="note">Non renseigné.</p>'; }
 function openFiche(id){ const v=vins().find(x=>x.id===id); if(!v) return closeSheet(); current=id; const s=statut(v), e=v.expert, qq=encodeURIComponent([label(v),v.millesime].filter(Boolean).join(' '));
   const mem=degs().filter(d=>d.vinId===id).sort((a,b)=>String(b.date).localeCompare(a.date));
-  openSheet(`<div class="fiche-h">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="Étiquette">`:''}<div><p class="note" style="margin:0">${dot(v)} ${esc((TY[v.type]||TY.rouge)[1])}${v.format?' · '+esc(v.format):''}</p><h2>${esc(label(v))}</h2><p style="margin:4px 0">${esc([v.millesime,v.appellation,v.region].filter(Boolean).join(' · '))}</p><span class="badge b-${s.k}">${esc(s.t)}</span></div></div>
+  openSheet(`<div class="fiche-h">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="Étiquette">`:''}<div><p class="note" style="margin:0">${dot(v)} ${esc((TY[v.type]||TY.rouge)[1])}${v.format?' · '+esc(v.format):''}</p><h2>${esc(label(v))}</h2><p style="margin:4px 0">${esc([v.millesime,v.appellation,v.region].filter(Boolean).join(' · '))}</p><span class="badge b-${s.k}">${esc(s.t)}</span> ${prixTag(v,true)}</div></div>
   <div class="stepper"><button class="qb big" data-q="-1" data-id="${esc(id)}" aria-label="Sortir une bouteille" ${+v.qte?'':'disabled'}>−</button><div style="text-align:center;flex:1"><span class="qte">${+v.qte||0}</span><br><span class="note">bouteille${(+v.qte||0)>1?'s':''} en cave</span></div><button class="qb big" data-q="1" data-id="${esc(id)}" aria-label="Ajouter une bouteille">+</button></div><p class="note" style="text-align:center;margin:-4px 0 8px">− quand vous en buvez une · + quand vous en rachetez · <button class="lnk" id="fNoter">sortir avec des notes</button></p>
   ${frise(v)}
   <div class="row"><button class="btn ghost" id="fEdit">Modifier</button><button class="btn ghost" id="fDup">Dupliquer</button><button class="btn" id="fExp">${e?'Mettre à jour la fiche Claude':'Fiche Claude'}</button></div>
   <fieldset><legend>Identité</legend>${dl([['Producteur',v.producteur],['Cépages',v.cepages],['Degré',v.degre?v.degre+' %':'']])}</fieldset>
-  <fieldset><legend>Achat</legend>${dl([['Lieu',v.lieuAchat],['Date',v.dateAchat],['Prix',v.prix?euro(v.prix):''],['Contact',v.contact]])}</fieldset>
+  <fieldset><legend>Achat</legend>${dl([['Lieu',v.lieuAchat],['Date',v.dateAchat],['Prix',v.prix?euro(v.prix):''],['Contact',v.contact],['Note',v.noteEntree]])}</fieldset>
   <fieldset><legend>Gestion</legend>${dl([['Cave',v.cave],['Emplacement',v.emplacement],['À boire',[v.de&&'dès '+v.de,v.apogee&&'apogée '+v.apogee,v.jusqua&&'jusqu’en '+v.jusqua].filter(Boolean).join(' · ')],['Entrées',v.qteEntree],['Service',[v.temp,v.carafe].filter(Boolean).join(' — ')],['Accords',v.accords]])}</fieldset>
   <fieldset><legend>Dégustation</legend>${dl([['Guide Hachette',(v.guideNote?GUIDE[v.guideNote]:'')+(v.guideCC?' ♥ coup de cœur':'')+(v.guideEdition?' (éd. '+v.guideEdition+')':'')],['Commentaire du Guide',v.guideComment],['Ma note',v.maNote?'★'.repeat(+v.maNote):''],['Mes commentaires',v.mesComments]])}</fieldset>
   ${e?`<div class="expert"><h3 style="font-size:24px">L’avis du caviste</h3><p class="note">Fiche du ${esc(e.date||'')}${e.fiabilite?' · fiabilité '+esc(e.fiabilite):''}</p>
@@ -309,6 +313,7 @@ function openForm(v={},titre){ v={type:'rouge',format:'75 cl',qte:1,cave:R().der
   ${inp('degre','Degré (%)',v.degre,'number')}${inp('temp','Température de service',v.temp)}${inp('carafe','Carafage',v.carafe)}${inp('accords','Accords',v.accords)}</div>
   <label style="margin-top:12px">Commentaires du Guide<textarea name="guideComment">${esc(v.guideComment||'')}</textarea></label>
   <label style="margin-top:12px">Mes commentaires<textarea name="mesComments">${esc(v.mesComments||'')}</textarea></label></details>
+  <label style="margin-top:16px">Petite note (facultatif)<input name="noteEntree" value="${esc(v.noteEntree||'')}" placeholder="Ex. offert par Marie pour mes 50 ans"></label>
   <div class="row" style="margin-top:18px"><button class="btn">Enregistrer</button>${id?'':'<button type="button" class="btn sec" id="saveSim">Enregistrer et saisir un similaire</button>'}</div></form>`);
   $('#fApp').addEventListener('change',()=>{ const a=APP[$('#fApp').value.trim()]; if(!a) return; if(!$('#fReg').value) $('#fReg').value=a[0];
     if(!id&&!v.typeManuel){ const r=document.querySelector(`#vf [name=type][value="${a[1]}"]`); if(r) r.checked=true; } });
@@ -351,8 +356,8 @@ async function importerFiches(t){ const a=t.indexOf('{'), b=t.lastIndexOf('}'); 
   await persist(); renderAll(); return n; }
 
 /* ================= Fichiers ================= */
-const COLS=['nom','cuvee','millesime','type','producteur','appellation','region','cepages','format','degre','cave','emplacement','qte','prix','dateAchat','lieuAchat','contact','de','apogee','jusqua','guideNote','guideCC','guideEdition','guideComment','maNote','mesComments','temp','carafe','accords'];
-const ENTETES={nom:'Nom',cuvee:'Cuvée',millesime:'Millésime',type:'Couleur',producteur:'Producteur',appellation:'Appellation',region:'Région',cepages:'Cépages',format:'Format',degre:'Degré',cave:'Cave',emplacement:'Emplacement',qte:'Quantité',prix:'Prix',dateAchat:'Date achat',lieuAchat:'Lieu achat',contact:'Contact',de:'Boire dès',apogee:'Apogée',jusqua:'Boire jusqu’en',guideNote:'Note Guide',guideCC:'Coup de cœur',guideEdition:'Édition Guide',guideComment:'Commentaire Guide',maNote:'Ma note',mesComments:'Mes commentaires',temp:'Température',carafe:'Carafage',accords:'Accords'};
+const COLS=['nom','cuvee','millesime','type','producteur','appellation','region','cepages','format','degre','cave','emplacement','qte','prix','dateAchat','lieuAchat','contact','de','apogee','jusqua','guideNote','guideCC','guideEdition','guideComment','maNote','mesComments','temp','carafe','accords','noteEntree'];
+const ENTETES={nom:'Nom',cuvee:'Cuvée',millesime:'Millésime',type:'Couleur',producteur:'Producteur',appellation:'Appellation',region:'Région',cepages:'Cépages',format:'Format',degre:'Degré',cave:'Cave',emplacement:'Emplacement',qte:'Quantité',prix:'Prix',dateAchat:'Date achat',lieuAchat:'Lieu achat',contact:'Contact',de:'Boire dès',apogee:'Apogée',jusqua:'Boire jusqu’en',guideNote:'Note Guide',guideCC:'Coup de cœur',guideEdition:'Édition Guide',guideComment:'Commentaire Guide',maNote:'Ma note',mesComments:'Mes commentaires',temp:'Température',carafe:'Carafage',accords:'Accords',noteEntree:'Note'};
 const cell=x=>{ x=x===undefined||x===null||x===false?'':x===true?'oui':String(x); return /[";\n\r]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; };
 function csv(){ return [COLS.map(k=>ENTETES[k]).join(';'),...vins().map(v=>COLS.map(k=>k==='type'?(TY[v[k]]||[])[1]:k==='guideNote'?(v[k]?GUIDE[v[k]]:''):v[k]).map(cell).join(';'))].join('\n'); }
 function parseCsv(t){ t=t.replace(/^﻿/,''); const sep=(t.split('\n')[0].match(/;/g)||[]).length>=(t.split('\n')[0].match(/,/g)||[]).length?';':','; const rows=[]; let row=[],c='',q=false;
@@ -418,6 +423,7 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
   try{ await idb.open(); const st=await idb.get('state'); if(st) S={vins:st.vins||[],degustations:st.degustations||[],reglages:{...DEF_R,...(st.reglages||{})}}; }
   catch(e){ $('#alerte').innerHTML='<p class="warn">Stockage indisponible sur ce navigateur (navigation privée ?) : rien ne sera conservé.</p>'; }
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{});
+  if(!R().seuils2){ if(+R().exception===40) R().exception=30; R().seuils2=1; }
   Sync.restore(); show(location.hash.slice(1)||'cave'); renderAll(); Sync.sync();
   if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
