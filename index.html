@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#6b1730">
+<meta name="description" content="Ma Cave : le livre de cave de poche, hors ligne, synchronisé avec Google Drive.">
+<title>Ma Cave</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head><body>
+<header class="top"><div class="top-in">
+ <div class="top-row"><h1>Ma Cave</h1><button class="sync" id="syncBtn" title="Synchronisation Google Drive"><i></i><span id="syncTxt">Drive non relié</span></button></div>
+ <p id="stats">Chargement…</p>
+ <input id="q" type="search" placeholder="Chercher un vin, un domaine, une appellation…" aria-label="Rechercher">
+</div></header>
+<main>
+ <div id="alerte"></div>
+ <section id="v-cave" class="view on">
+  <div class="chips" id="fCave"></div>
+  <div class="chips" id="fType"></div>
+  <div class="row" style="justify-content:space-between;margin-bottom:10px">
+   <div class="chips" id="fStat" style="padding:0"></div>
+   <label style="flex:0 0 170px">Trier par<select id="tri"><option value="urgence">Urgence de garde</option><option value="nom">Nom</option><option value="mill">Millésime</option><option value="prix">Prix</option><option value="qte">Quantité</option></select></label>
+  </div>
+  <div class="list" id="liste"></div>
+ </section>
+
+ <section id="v-boire" class="view">
+  <h2 class="sec">Que boire ?</h2>
+  <p class="lead">Choisissez une occasion et, si vous voulez, le plat : l'appli choisit dans votre cave en priorisant les bouteilles à ne pas laisser passer.</p>
+  <div class="chips" id="occ"></div>
+  <div class="row"><input id="plat" placeholder="Plat (ex. huîtres, gigot, chocolat)…" style="flex:1 1 220px"><button class="btn" id="goOcc">Proposer</button></div>
+  <div id="occRes"></div>
+  <div id="boireListes"></div>
+ </section>
+
+ <section id="v-ajout" class="view">
+  <h2 class="sec">Ajouter des bouteilles</h2>
+  <p class="lead">L'appellation remplit seule la région et la couleur. Pour plusieurs bouteilles identiques, indiquez la quantité ; pour un autre millésime, utilisez « Enregistrer et saisir un similaire ».</p>
+  <div class="big">
+   <button class="tile" id="tForm"><h3>Nouvelle fiche</h3><span>Le formulaire du carnet de cave.</span></button>
+   <label class="tile" for="photo"><h3>Avec une photo</h3><span>Photographiez l'étiquette, puis complétez la fiche.</span></label>
+   <label class="tile" for="csvF"><h3>Importer un tableau</h3><span>Un fichier CSV (Google Sheets, Excel) : toute une cave d'un coup.</span></label>
+   <button class="tile" id="tClaude"><h3>Compléter avec Claude</h3><span>Préparez une demande pour toutes les fiches sans garde ni accords, collez la réponse.</span></button>
+  </div>
+  <input type="file" id="photo" accept="image/*" capture="environment" hidden>
+  <input type="file" id="csvF" accept=".csv,text/csv" hidden>
+  <p class="note" style="margin-top:14px"><button class="btn ghost" id="modele">Télécharger le modèle de tableau</button></p>
+  <div id="ajRes"></div>
+ </section>
+
+ <section id="v-reglages" class="view">
+  <h2 class="sec">Réglages</h2>
+  <fieldset><legend>Google Drive</legend>
+   <p class="note" style="margin:0">Une fois relié, chaque changement est copié dans le fichier <b>ma-cave-donnees.json</b> de votre Drive, plus une sauvegarde datée chaque mois. Sur un nouvel appareil, reliez le même compte Google : la cave revient.</p>
+   <label>Identifiant client Google (voir le guide)<input id="cid" placeholder="xxxxxxxx.apps.googleusercontent.com" autocomplete="off"></label>
+   <div class="row"><button class="btn" id="gConn">Relier Google Drive</button><button class="btn sec" id="gSync">Synchroniser maintenant</button><button class="btn ghost" id="gSheet">Copie Google Sheets</button></div>
+   <p id="gMsg" class="note" style="margin:0"></p>
+  </fieldset>
+  <fieldset><legend>Vos caves</legend>
+   <div id="cavesList" class="chips"></div>
+   <div class="row"><input id="newCave" placeholder="Nouvelle cave (ex. Maison de campagne)" style="flex:1 1 220px"><button class="btn sec" id="addCave">Ajouter</button></div>
+  </fieldset>
+  <fieldset><legend>Vos repères de prix</legend>
+   <div class="grid2">
+    <label>« Au quotidien » jusqu'à (€)<input type="number" id="sBudget" min="0" inputmode="decimal"></label>
+    <label>« Vin d'exception » à partir de (€)<input type="number" id="sExc" min="0" inputmode="decimal"></label>
+   </div>
+   <button class="btn sec" id="saveS" style="justify-self:start">Enregistrer</button>
+  </fieldset>
+  <fieldset><legend>Fichiers</legend>
+   <div class="row">
+    <button class="btn ghost" id="dJson">Sauvegarde complète</button>
+    <button class="btn ghost" id="dCsv">Tableau CSV</button>
+    <button class="btn ghost" id="share">Partager la sauvegarde</button>
+    <label class="btn ghost" for="impF" style="display:inline-flex;align-items:center;color:var(--ink);font-size:16px">Restaurer / fusionner</label>
+    <input type="file" id="impF" accept=".json,application/json" hidden>
+   </div>
+   <p id="fMsg" class="note" style="margin:0"></p>
+   <p class="note" style="margin:0">Ma Cave v1.0 — vos données sont stockées sur cet appareil et dans votre Google Drive, nulle part ailleurs.</p>
+  </fieldset>
+ </section>
+</main>
+
+<nav class="tabs" style="grid-template-columns:repeat(4,1fr)" aria-label="Navigation">
+ <button data-v="cave" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M10 2h4v4c0 1 2 2 2 5v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V11c0-3 2-4 2-5z"/><path d="M8 14h8"/></svg>Cave</button>
+ <button data-v="boire"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 3h10l-1 7a4 4 0 0 1-8 0z"/><path d="M12 14v7M8 21h8"/></svg>À boire</button>
+ <button data-v="ajout" class="plus"><span class="p">+</span>Ajouter</button>
+ <button data-v="reglages"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Réglages</button>
+</nav>
+<div id="sheet" class="sheet" hidden><div class="sheet-in" role="dialog" aria-modal="true"><button class="x" id="xs" aria-label="Fermer">×</button><div id="sb"></div></div></div>
+<div id="toast" role="status"></div>
+<script src="appellations.js"></script>
+<script src="app.js"></script>
+</body></html>
