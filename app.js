@@ -59,7 +59,7 @@ const payload = () => ({app:'ma-cave', version:1, date:now(), reglages:S.reglage
 
 /* ================= Google Drive ================= */
 const Sync = {
-  FILE:'ma-cave-donnees.json', SCOPE:'https://www.googleapis.com/auth/drive.file',
+  FILE:'ma-cave-donnees.json', SCOPE:'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
   token:null, exp:0, timer:null, busy:false,
   cid(){ return (localStorage.getItem('mc_cid')||'542423062328-qjc7nc5v36f9kbe5p10agt7lk132fuce.apps.googleusercontent.com').trim(); },
   valid(){ return this.token && Date.now() < this.exp; },
@@ -104,6 +104,7 @@ const Sync = {
       let remoteTxt='';
       if(f){ remoteTxt = await (await this.api(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`)).text();
         try{ merge(JSON.parse(remoteTxt)); }catch(e){} }
+      await this.boite();
       const mine = JSON.stringify(payload());
       const strip = t => { try{ const o=JSON.parse(t); delete o.date; return JSON.stringify(o); }catch(e){ return ''; } };
       if(!f) await this.create(this.FILE, mine);
@@ -117,6 +118,15 @@ const Sync = {
       if(e.message!=='reconnect') $('#gMsg').textContent = e.message;
     }finally{ this.busy=false; }
   },
+  async boite(){ // fichiers ma-cave-ajout*.json déposés par votre caviste dans Drive
+    try{ const q=encodeURIComponent("name contains 'ma-cave-ajout' and trashed=false");
+      const j=await (await this.api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)&pageSize=200`)).json();
+      const deja=new Set(R().importes||[]); let nouv=0, vus=0;
+      for(const fi of j.files||[]){ if(deja.has(fi.id)) continue;
+        try{ const o=JSON.parse(await (await this.api(`https://www.googleapis.com/drive/v3/files/${fi.id}?alt=media`)).text()); if(o&&Array.isArray(o.vins)){ const avant=vins().length; merge(o); nouv+=vins().length-avant; } deja.add(fi.id); vus++; }catch(e){ if(e.message==='reconnect') throw e; } }
+      if(vus){ R().importes=[...deja]; R().majLe=now(); }
+      if(nouv) setTimeout(()=>toast(nouv+' vin'+(nouv>1?'s':'')+' ajouté'+(nouv>1?'s':'')+' par votre caviste'),300);
+    }catch(e){ if(e.message==='reconnect') throw e; } },
   async sheet(){
     if(!this.valid()) await this.connect();
     const r = await this.create('Ma Cave — '+today(), csv(), 'text/csv', 'application/vnd.google-apps.spreadsheet');
