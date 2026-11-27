@@ -4,7 +4,7 @@
 'use strict';
 {
 const Y = new Date().getFullYear();
-const TYPES = [['blanc','Blanc','#e2c046',0],['doux','Blanc doux','#d18f22',0],['rose','Rosé','#e88ca3',0],['rouge','Rouge','#7a1f3d',0],['eff_blanc','Effervescent blanc','#cbb24a',1],['eff_rose','Effervescent rosé','#d6688a',1],['eff_rouge','Effervescent rouge','#5a1530',1]];
+const TYPES = [['blanc','Blanc','#e2c046',0],['doux','Blanc doux','#d18f22',0],['rose','Rosé','#e88ca3',0],['rouge','Rouge','#7a1f3d',0],['eff_blanc','Effervescent blanc','#cbb24a',1],['eff_rose','Effervescent rosé','#d6688a',1],['eff_rouge','Effervescent rouge','#5a1530',1],['mute','Porto / vin muté','#4a1424',0]];
 const TY = Object.fromEntries(TYPES.map(t=>[t[0],t]));
 const FORMATS = ['37,5 cl','50 cl','75 cl','Magnum 150 cl','Jéroboam 300 cl','Autre'];
 const GUIDE = {'':'—',cite:'Cité','1':'★','2':'★★','3':'★★★'};
@@ -26,7 +26,18 @@ const idb = {
   get(k){ return new Promise((ok,ko)=>{ const t=this.db.transaction('kv').objectStore('kv').get(k); t.onsuccess=()=>ok(t.result); t.onerror=()=>ko(t.error); }); },
   set(k,v){ return new Promise((ok,ko)=>{ const tx=this.db.transaction('kv','readwrite'); tx.objectStore('kv').put(v,k); tx.oncomplete=()=>ok(); tx.onerror=()=>ko(tx.error); }); }
 };
-const DEF_R = {budget:15, exception:30, caves:['Cave principale'], majLe:''};
+const DEF_R = {budget:15, exception:30, caves:['Cave principale'], theo:{prenom:'Théo',annee:2016}, majLe:''};
+const CG='Grande cave', CP='Cave blancs & bulles';
+function normCaves(){ let ch=false; if(!R().caves3){ R().caves=[CG,CP,...R().caves.filter(c=>c!=='Cave principale'&&c!==CG&&c!==CP)]; R().caves3=1; R().majLe=now(); ch=true; }
+  for(const v of S.vins){ if(v.supprime) continue; if(!v.cave||v.cave==='Cave principale'){ v.cave=(v.type==='rouge'||v.type==='mute')?CG:CP; v.majLe=now(); ch=true; } } return ch; }
+const theoR=()=>R().theo||DEF_R.theo;
+const theoDef=v=>+v.millesime===+theoR().annee;
+const inTheo=v=>v.theo===true||(v.theo!==false&&theoDef(v));
+function theoAge(v){ const t=theoR(), ju=+v.jusqua||9999, de=+v.de||0, ap=+v.apogee||0;
+  const C=[10,12,15,16,18,20,21,25,30,40].map(a=>[a,+t.annee+a]).filter(([a,y])=>y>=Y&&y<=ju); if(!C.length) return null;
+  const W=C.filter(([a,y])=>y>=de), L=W.length?W:C, F=L.filter(([a])=>a>=18&&a<=21), P=F.length?F:L;
+  return ap?P.reduce((b,x)=>Math.abs(x[1]-ap)<Math.abs(b[1]-ap)?x:b):(F.length?F[0]:P[P.length-1]); }
+function theoTxt(v){ if(!inTheo(v)) return ''; const a=theoAge(v), p=theoR().prenom; return a?`Cave de ${p} · pour ses ${a[0]} ans (${a[1]})`:`Cave de ${p} · à ouvrir sans attendre`; }
 let S = {vins:[], degustations:[], reglages:{...DEF_R}};
 const vins = () => S.vins.filter(v=>!v.supprime);
 const degs = () => S.degustations.filter(d=>!d.supprime);
@@ -54,6 +65,7 @@ function merge(other){
   S.vins = mergeArr(S.vins, other.vins);
   S.degustations = mergeArr(S.degustations, other.degustations);
   if(other.reglages && String(other.reglages.majLe||'') > String(R().majLe||'')) S.reglages = {...DEF_R, ...other.reglages};
+  normCaves();
   let nph=0; if(other.photos&&typeof other.photos==='object') for(const [id,ph] of Object.entries(other.photos)){ const v=S.vins.find(x=>x.id===id&&!x.supprime); if(v&&!okImg(v.photo)&&okImg(ph)){ v.photo=ph; v.majLe=now(); nph++; } }
   return nph;
 }
@@ -172,7 +184,7 @@ function suggere(occ, plat){
   const pri={passe:6,urgent:5,apogee:4,pret:2,inconnu:1,attendre:-9};
   const okPlat = PLATS.find(p=>p[0].test(plat||''));
   const mots = (plat||'').toLowerCase().split(/[^a-zà-ÿœ]+/).filter(m=>m.length>3);
-  return vins().filter(v=>+v.qte>0).map(v=>{
+  return vins().filter(v=>+v.qte>0&&!inTheo(v)).map(v=>{
     const s=statut(v), p=prixRef(v), exc=isExc(v), eff=String(v.type).startsWith('eff');
     let sc=pri[s.k]||0; const pq=[];
     if(s.o<=1) pq.push('à boire en priorité'); else if(s.k==='apogee') pq.push('à son apogée');
@@ -202,28 +214,28 @@ function chips(el,items,cur,cb){ el.innerHTML=items.map(([k,l])=>`<button class=
 const okImg = s => typeof s==='string' && s.startsWith('data:image/');
 function card(v){ const s=statut(v);
   return `<div class="card${isExc(v)?' exc':''}" role="button" tabindex="0" data-id="${esc(v.id)}">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="">`:btl(v)}
-  <div><b>${esc(label(v))}${v.millesime?' '+esc(v.millesime):''}</b><small>${esc([v.appellation,v.region].filter(Boolean).join(' · '))}</small><small>${esc([v.cave,v.emplacement].filter(Boolean).join(' — '))}</small>${prov(v)?`<small class="prov">${esc(prov(v))}</small>`:''}</div>
+  <div><b>${esc(label(v))}${v.millesime?' '+esc(v.millesime):''}</b><small>${esc([v.appellation,v.region].filter(Boolean).join(' · '))}</small><small>${esc([v.cave,v.emplacement].filter(Boolean).join(' — '))}</small>${prov(v)?`<small class="prov">${esc(prov(v))}</small>`:''}${inTheo(v)?`<small class="theo">✦ ${esc(theoTxt(v))}</small>`:''}</div>
   <div class="right"><div class="qrow"><button class="qb" data-q="-1" data-id="${esc(v.id)}" aria-label="Sortir une bouteille" ${+v.qte?'':'disabled'}>−</button><span class="qte">${+v.qte||0}</span><button class="qb" data-q="1" data-id="${esc(v.id)}" aria-label="Ajouter une bouteille">+</button></div>${prixTag(v)}<span class="badge b-${s.k}">${esc(+v.qte?s.t:'Épuisé')}</span></div></div>`; }
 function renderCave(){ const L0=vins(), caves=[...new Set([...R().caves,...L0.map(v=>v.cave).filter(Boolean)])];
-  chips($('#fCave'),[['','Toutes les caves'],...caves.map(c=>[c,c])],f.cave,k=>{f.cave=k;renderCave()});
+  chips($('#fCave'),[['','Toutes les caves'],...caves.map(c=>[c,c]),...(L0.some(inTheo)?[['__theo','✦ '+theoR().prenom+' '+theoR().annee]]:[])],f.cave,k=>{f.cave=k;renderCave()});
   chips($('#fType'),[['','Toutes couleurs'],...TYPES.map(t=>[t[0],t[1]])],f.type,k=>{f.type=k;renderCave()});
   chips($('#fStat'),[['','Tous'],['urg','À boire vite'],['apogee','Apogée'],['pret','Prêts'],['attendre','À attendre'],['exc','Exception'],['vide','Épuisés']],f.stat,k=>{f.stat=k;renderCave()});
   const q=$('#q').value.trim().toLowerCase(), tri=$('#tri').value;
-  let L=L0.filter(v=>(!f.cave||v.cave===f.cave)&&(!f.type||v.type===f.type));
+  let L=L0.filter(v=>(!f.cave||(f.cave==='__theo'?inTheo(v):v.cave===f.cave))&&(!f.type||v.type===f.type));
   if(f.stat==='vide') L=L.filter(v=>!(+v.qte)); else { L=L.filter(v=>+v.qte>0); if(f.stat==='urg') L=L.filter(v=>statut(v).o<=1); else if(f.stat==='exc') L=L.filter(isExc); else if(f.stat) L=L.filter(v=>statut(v).k===f.stat); }
   if(q) L=L.filter(v=>[v.nom,v.cuvee,v.producteur,v.appellation,v.region,v.cepages,v.millesime,v.emplacement,v.lieuAchat].join(' ').toLowerCase().includes(q));
   const by={urgence:(a,b)=>statut(a).o-statut(b).o||(+a.jusqua||9999)-(+b.jusqua||9999),nom:(a,b)=>label(a).localeCompare(label(b),'fr'),mill:(a,b)=>(+a.millesime||0)-(+b.millesime||0),prix:(a,b)=>prixRef(b)-prixRef(a),qte:(a,b)=>(+b.qte||0)-(+a.qte||0)};
   L.sort(f.stat==='exc'&&tri==='urgence'?by.prix:by[tri]);
   $('#liste').innerHTML = L.length ? L.map(card).join('') : (L0.length ? '<div class="empty"><h3>Aucun vin ici</h3>Changez la recherche ou les filtres.</div>' : '<div class="empty"><h3>Votre cave est vide</h3>Touchez <b>+ Ajouter</b> pour saisir vos premières bouteilles, ou importez un tableau.</div>'); }
 function renderBoire(){ chips($('#occ'),OCC,occSel,k=>{occSel=k;renderBoire();occasion()});
-  const d=vins().filter(v=>+v.qte>0);
-  const S2=[['À boire d’urgence','Leur fenêtre de garde se referme : ouvrez-les avant de les perdre.',d.filter(v=>statut(v).o<=1)],
+  const d=vins().filter(v=>+v.qte>0&&!inTheo(v)), dT=vins().filter(v=>+v.qte>0&&inTheo(v)), tp=theoR().prenom;
+  const S2=[[`✦ La cave de ${tp} (${theoR().annee})`,`Ses bouteilles de naissance, mises de côté : elles n’apparaissent pas dans les autres conseils. L’âge indiqué est le plus bel anniversaire pour ouvrir chacune.`,dT],['À boire d’urgence','Leur fenêtre de garde se referme : ouvrez-les avant de les perdre.',d.filter(v=>statut(v).o<=1)],
    ['À leur apogée','Le meilleur moment pour les servir, c’est maintenant.',d.filter(v=>statut(v).k==='apogee')],
    ['Au quotidien, petit budget',`Prêts à boire, jusqu'à ${R().budget} € la bouteille.`,d.filter(v=>isBudget(v)&&statut(v).k!=='attendre'&&statut(v).k!=='inconnu')],
    ['Vins d’exception prêts',`★★★, coups de cœur ou plus de ${R().exception} € — pour les grands moments.`,d.filter(v=>isExc(v)&&statut(v).k!=='attendre'&&statut(v).k!=='inconnu')],
    ['À laisser dormir','Trop jeunes : patience.',d.filter(v=>statut(v).k==='attendre')],
    ['Garde à préciser','Renseignez la fenêtre de garde (ou demandez-la à Claude) pour recevoir des alertes.',d.filter(v=>statut(v).k==='inconnu')]];
-  $('#boireListes').innerHTML = S2.map(([t,ds,L])=>L.length?`<h2 class="sec">${esc(t)} <span class="note">(${L.length})</span></h2><p class="lead">${esc(ds)}</p><div class="list">${L.sort(t.startsWith('Vins d’exception')?(a,b)=>prixRef(b)-prixRef(a):(a,b)=>(+a.jusqua||9999)-(+b.jusqua||9999)).map(card).join('')}</div>`:'').join('') || '<div class="empty">Ajoutez des bouteilles pour recevoir des conseils.</div>'; }
+  $('#boireListes').innerHTML = S2.map(([t,ds,L])=>L.length?`<h2 class="sec">${esc(t)} <span class="note">(${L.length})</span></h2><p class="lead">${esc(ds)}</p><div class="list">${L.sort(t.startsWith('Vins d’exception')?(a,b)=>prixRef(b)-prixRef(a):t.startsWith('✦')?(a,b)=>((theoAge(a)||[0,0])[1]-(theoAge(b)||[0,0])[1]):(a,b)=>(+a.jusqua||9999)-(+b.jusqua||9999)).map(card).join('')}</div>`:'').join('') || '<div class="empty">Ajoutez des bouteilles pour recevoir des conseils.</div>'; }
 function occasion(){ const res=suggere(occSel,$('#plat').value.trim()), occ=OCC.find(o=>o[0]===occSel)[1];
   $('#occRes').innerHTML = `<div class="expert" style="margin-top:14px"><h3 style="font-size:24px">Pour « ${esc(occ)} »</h3>${res.length?`<div class="list">${res.map(x=>card(x.v)+`<p style="margin:0 0 6px" class="note">${esc(x.pq.join(' · ')||'bon choix pour l’occasion')}${x.v.temp?' · servir à '+esc(x.v.temp):''}${x.v.carafe?' · '+esc(x.v.carafe):''}</p>`).join('')}</div>`:'<p>Rien dans la cave ne convient vraiment à cette occasion.</p>'}</div>`; }
 function renderR(){ $('#cavesList').innerHTML=R().caves.map(c=>`<span class="chip">${esc(c)} <button data-c="${esc(c)}" aria-label="Retirer ${esc(c)}" style="border:0;background:none;cursor:pointer;color:var(--mut)">×</button></span>`).join('');
@@ -292,7 +304,7 @@ function openFiche(id){ const v=vins().find(x=>x.id===id); if(!v) return closeSh
   <div class="row"><button class="btn ghost" id="fEdit">Modifier</button><button class="btn ghost" id="fDup">Dupliquer</button><button class="btn" id="fExp">${e?'Mettre à jour la fiche Claude':'Fiche Claude'}</button></div>
   <fieldset><legend>Identité ${pen('id')}</legend>${dl([['Producteur',v.producteur],['Cépages',v.cepages],['Degré',v.degre?v.degre+' %':'']])}</fieldset>
   <fieldset><legend>Achat & provenance ${pen('achat')}</legend>${dl([['Lieu',v.lieuAchat],['Date',v.dateAchat],['Prix',v.prix?euro(v.prix):''],['Contact',v.contact],['Provenance',[v.provenance,v.deQui].filter(Boolean).join(' — ')],['Note',v.noteEntree]])}${v.provenance||v.deQui?'':`<button class="lnk" data-pen="prov">+ Ajouter la provenance (cadeau, de qui…)</button>`}</fieldset>
-  <fieldset><legend>Gestion ${pen('gestion')}</legend>${dl([['Cave',v.cave],['Emplacement',v.emplacement],['À boire',[v.de&&'dès '+v.de,v.apogee&&'apogée '+v.apogee,v.jusqua&&'jusqu’en '+v.jusqua].filter(Boolean).join(' · ')],['Entrées',v.qteEntree],['Service',[v.temp,v.carafe].filter(Boolean).join(' — ')],['Accords',v.accords]])}</fieldset>
+  <fieldset><legend>Gestion ${pen('gestion')}</legend>${dl([['Cave',v.cave],['Collection',theoTxt(v)],['Emplacement',v.emplacement],['À boire',[v.de&&'dès '+v.de,v.apogee&&'apogée '+v.apogee,v.jusqua&&'jusqu’en '+v.jusqua].filter(Boolean).join(' · ')],['Entrées',v.qteEntree],['Service',[v.temp,v.carafe].filter(Boolean).join(' — ')],['Accords',v.accords]])}</fieldset>
   <fieldset><legend>Dégustation ${pen('degus')}</legend>${dl([['Guide Hachette',(v.guideNote?GUIDE[v.guideNote]:'')+(v.guideCC?' ♥ coup de cœur':'')+(v.guideEdition?' (éd. '+v.guideEdition+')':'')],['Commentaire du Guide',v.guideComment],['Ma note',v.maNote?'★'.repeat(+v.maNote):''],['Mes commentaires',v.mesComments]])}</fieldset>
   ${e?`<div class="expert"><h3 style="font-size:24px">L’avis du caviste</h3><p class="note">Fiche du ${esc(e.date||'')}${e.fiabilite?' · fiabilité '+esc(e.fiabilite):''}</p>
    ${e.presentation?`<p>${esc(e.presentation)}</p>`:''}${e.avis?`<p><b>Ce qu’on en dit :</b> ${esc(e.avis)}</p>`:''}${e.degustation?`<p><b>En bouche :</b> ${esc(e.degustation)}</p>`:''}
@@ -333,7 +345,7 @@ function openForm(v={},titre,sec){ v={type:'rouge',format:'75 cl',qte:1,cave:R()
   <datalist id="dlApp">${Object.keys(APP).map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
   <datalist id="dlNom">${prev('nom').map(a=>`<option value="${esc(a)}">`).join('')}</datalist><datalist id="dlProd">${prev('producteur').map(a=>`<option value="${esc(a)}">`).join('')}</datalist>
   <fieldset><legend id="s-gestion">Gestion</legend><div class="grid2">${inp('qte','Quantité en cave',v.qte,'number','min="0"')}
-  <label>Cave<input name="cave" list="dlc" value="${esc(v.cave||'')}"><datalist id="dlc">${R().caves.map(c=>`<option value="${esc(c)}">`).join('')}</datalist></label>${inp('emplacement','Emplacement (casier, rangée…)',v.emplacement)}
+  <label>Cave<input name="cave" list="dlc" value="${esc(v.cave||'')}"><datalist id="dlc">${R().caves.map(c=>`<option value="${esc(c)}">`).join('')}</datalist></label>${inp('emplacement','Emplacement (casier, rangée…)',v.emplacement)}<label style="display:flex;gap:8px;align-items:center;color:var(--ink);grid-column:1/-1"><input type="checkbox" name="theoX" ${inTheo(v)?'checked':''}> ✦ Réserver pour la cave de ${esc(theoR().prenom)}</label>
   ${inp('de','À boire à partir de',v.de,'number')}${inp('apogee','Apogée',v.apogee,'number')}${inp('jusqua','À boire jusqu’en',v.jusqua,'number')}</div></fieldset>
   <fieldset><legend id="s-achat">Achat</legend><div class="grid2">${inp('prix','Prix unitaire (€)',v.prix,'number')}${inp('dateAchat','Date d’achat',v.dateAchat||(id?'':today()),'date')}${inp('lieuAchat','Lieu d’achat',v.lieuAchat,'text','list="dlLieu"')}${inp('contact','Contact',v.contact)}</div>
   <datalist id="dlLieu">${prev('lieuAchat').map(a=>`<option value="${esc(a)}">`).join('')}</datalist></fieldset>
@@ -351,10 +363,10 @@ function openForm(v={},titre,sec){ v={type:'rouge',format:'75 cl',qte:1,cave:R()
   document.querySelectorAll('#vf [name=type]').forEach(r=>r.addEventListener('change',()=>v.typeManuel=true));
   const go=async sim=>{ const fm=$('#vf'); if(!fm.reportValidity()) return; const d={};
     for(const el of fm.querySelectorAll('[name]')){ if(el.type==='radio'){ if(el.checked) d[el.name]=el.value; } else if(el.type==='checkbox') d[el.name]=el.checked; else if(el.type==='number') d[el.name]=num(el.value); else d[el.name]=el.value.trim(); }
-    d.qte=Math.max(0,parseInt(d.qte)||0); if(v.photo) d.photo=v.photo; if(!id){ d.qteEntree=d.qte; if(v.photo) d.photo=v.photo; if(v.expert) d.expert=v.expert; }
+    d.theo=(d.theoX===theoDef(d))?null:d.theoX; delete d.theoX; d.qte=Math.max(0,parseInt(d.qte)||0); if(v.photo) d.photo=v.photo; if(!id){ d.qteEntree=d.qte; if(v.photo) d.photo=v.photo; if(v.expert) d.expert=v.expert; }
     if(d.cave&&!R().caves.includes(d.cave)) R().caves.push(d.cave); if(R().derniereCave!==d.cave){ R().derniereCave=d.cave; R().majLe=now(); }
     const nid=await saveVin(id,d); toast(id?'Fiche mise à jour':'Vin ajouté à la cave');
-    if(sim){ const c={...d}; delete c.photo; delete c.expert; c.millesime=''; c.qte=1; c.emplacement=''; openForm(c,'Même vin : changez le millésime, la quantité ou l’emplacement'); } else openFiche(nid); };
+    if(sim){ const c={...d}; delete c.photo; delete c.expert; delete c.theo; c.millesime=''; c.qte=1; c.emplacement=''; openForm(c,'Même vin : changez le millésime, la quantité ou l’emplacement'); } else openFiche(nid); };
   $('#vf').onsubmit=e=>{ e.preventDefault(); go(false); };
   if(sec){ const t=$('#s-'+sec); if(t) setTimeout(()=>{ t.scrollIntoView({block:'start',behavior:'smooth'}); const f=(t.closest('fieldset,details')||t).querySelector('input,select,textarea'); if(f&&sec!=='degus') f.focus({preventScroll:true}); },60); }
   $('#vfPhoto').onchange=async e=>{ const fl=e.target.files[0]; if(!fl) return; try{ v.photo=await vignette(fl); const ph=e.target.closest('.ph'); ph.querySelector('img,svg').outerHTML=`<img src="${v.photo}" alt="">`; ph.querySelector('span').textContent='Changer la photo'; }catch(er){ toast(er.message); } }; const s=$('#saveSim'); if(s) s.onclick=()=>go(true); }
@@ -457,6 +469,7 @@ document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==
   catch(e){ $('#alerte').innerHTML='<p class="warn">Stockage indisponible sur ce navigateur (navigation privée ?) : rien ne sera conservé.</p>'; }
   if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().catch(()=>{});
   if(!R().seuils2){ if(+R().exception===40) R().exception=30; R().seuils2=1; }
+  if(normCaves()) await idb.set('state',S).catch(()=>{});
   Sync.restore(); show(location.hash.slice(1)||'cave'); renderAll(); Sync.sync();
   if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
