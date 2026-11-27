@@ -15,6 +15,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const num = v => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isFinite(n) ? n : ''; };
 const now = () => new Date().toISOString();
 const today = () => now().slice(0, 10);
+const after = p => { const n=now(); return n>String(p||'') ? n : new Date(Date.parse(p)+1).toISOString(); };
 const euro = n => n ? Math.round(n).toLocaleString('fr-FR') + ' €' : '';
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 function toast(t){ const e=$('#toast'); e.textContent=t; e.classList.add('on'); clearTimeout(e._t); e._t=setTimeout(()=>e.classList.remove('on'),2600); }
@@ -50,7 +51,7 @@ const R = () => S.reglages;
 async function persist(sync=true){ await idb.set('state', S); if(sync) Sync.schedule(); }
 
 async function saveVin(id, data){
-  data.majLe = now();
+  data.majLe = id ? after((S.vins.find(x=>x.id===id)||{}).majLe) : now();
   if(id){ const v=S.vins.find(x=>x.id===id); Object.assign(v,data); }
   else { id = uid(); S.vins.push({id, creeLe:data.majLe, ...data}); }
   await persist(); renderAll(); return id;
@@ -63,12 +64,12 @@ async function delVin(id){
 }
 async function remettre(degId){ const g=S.degustations.find(x=>x.id===degId); if(!g) return; const v=S.vins.find(x=>x.id===g.vinId&&!x.supprime);
   const i=S.degustations.indexOf(g); S.degustations[i]={id:degId,supprime:true,majLe:now()};
-  if(v){ v.qte=(+v.qte||0)+1; v.majLe=now(); } await persist(); renderAll(); toast(v?'Bouteille remise en cave · '+v.qte+' en cave':'Sortie annulée'); return v; }
+  if(v){ v.qte=(+v.qte||0)+1; v.majLe=after(v.majLe); } await persist(); renderAll(); toast(v?'Bouteille remise en cave · '+v.qte+' en cave':'Sortie annulée'); return v; }
 async function addDeg(d){ S.degustations.push({id:uid(), majLe:now(), ...d}); await persist(); }
 async function saveR(){ R().majLe = now(); await persist(); renderAll(); }
 
 /* ================= Fusion (synchronisation et import) ================= */
-function mergeArr(a,b){ const m=new Map(a.map(x=>[x.id,x])); for(const x of b||[]){ if(!x||!x.id) continue; const y=m.get(x.id); if(!y||String(x.majLe||'')>String(y.majLe||'')) m.set(x.id,x); } return [...m.values()]; }
+function mergeArr(a,b){ const m=new Map(a.map(x=>[x.id,x])), lim=new Date(Date.now()+60000).toISOString(); for(let x of b||[]){ if(!x||!x.id) continue; if(String(x.majLe||'')>lim) x={...x,majLe:now()}; const y=m.get(x.id); if(!y||String(x.majLe||'')>String(y.majLe||'')) m.set(x.id,x); } return [...m.values()]; }
 function merge(other){
   S.vins = mergeArr(S.vins, other.vins);
   S.degustations = mergeArr(S.degustations, other.degustations);
@@ -268,9 +269,9 @@ async function quick(id,d){ const v=vins().find(x=>x.id===id); if(!v) return; co
   if(d<0){ if(!(+v.qte)) return; degId=uid(); S.degustations.push({id:degId,majLe:now(),vinId:id,vin:label(v)+(v.millesime?' '+v.millesime:''),date:today(),motif:'Dégustée'}); await saveVin(id,{qte:(+v.qte)-1}); }
   else await saveVin(id,{qte:(+v.qte||0)+1,qteEntree:(+v.qteEntree||+v.qte||0)+1});
   const open=()=>{ if(current===id&&!$('#sheet').hidden) openFiche(id); }; open(); const n=+v.qte||0;
-  undoBar(d<0?`Bouteille sortie · il en reste ${n}`:`Bouteille ajoutée · ${n} en cave`,[['Annuler',async()=>{ const x=S.vins.find(y=>y.id===id); Object.assign(x,old,{majLe:now()});
+  undoBar(d<0?`Bouteille sortie · il en reste ${n}`:`Bouteille ajoutée · ${n} en cave`,[['Annuler',async()=>{ const x=S.vins.find(y=>y.id===id); Object.assign(x,old,{majLe:after(x.majLe)});
     if(degId){ const i=S.degustations.findIndex(y=>y.id===degId); if(i>=0) S.degustations[i]={id:degId,supprime:true,majLe:now()}; } await persist(); renderAll(); open(); toast('Annulé'); }],
-    ...(degId?[['Noter',()=>openSortie(id,degId)]]:[])]); }
+    ...(degId?[['Erreur de saisie',async()=>{ const i=S.degustations.findIndex(y=>y.id===degId); if(i>=0) S.degustations[i]={id:degId,supprime:true,majLe:now()}; await persist(); renderAll(); open(); toast('Corrigé : bouteille retirée, rien noté au journal'); }],['Noter',()=>openSortie(id,degId)]]:[])]); }
 
 /* ================= Journal & statistiques ================= */
 const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
