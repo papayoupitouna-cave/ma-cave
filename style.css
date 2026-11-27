@@ -138,3 +138,8 @@ h1,h2,h3,legend,.qte{font-family:"Cormorant Garamond",Georgia,serif}
 .jl .jd{font-family:"Cormorant Garamond",serif;font-size:28px;font-weight:700;color:var(--gold);text-align:center}
 .jl b{font-family:"Cormorant Garamond",Georgia,serif;font-size:18px}
 .jl small{display:block;color:var(--mut);font-size:13px}
+
+/* crayons de modification v1.5 */
+.pen{position:absolute;top:14px;right:62px;width:44px;height:44px;border-radius:50%;border:1px solid rgba(168,132,58,.55);background:var(--card);color:var(--wine2);font-size:20px;cursor:pointer;box-shadow:0 4px 12px -6px rgba(60,20,30,.4);z-index:2}
+.pen-s{border:0;background:none;color:var(--gold);font-size:17px;cursor:pointer;padding:4px 8px;margin-left:2px;vertical-align:middle;min-width:36px;min-height:36px}
+.fiche-h{padding-right:96px}
