@@ -61,6 +61,9 @@ async function delVin(id){
   S.degustations = S.degustations.map(d=>d.vinId===id?{id:d.id,supprime:true,majLe:now()}:d);
   await persist(); renderAll();
 }
+async function remettre(degId){ const g=S.degustations.find(x=>x.id===degId); if(!g) return; const v=S.vins.find(x=>x.id===g.vinId&&!x.supprime);
+  const i=S.degustations.indexOf(g); S.degustations[i]={id:degId,supprime:true,majLe:now()};
+  if(v){ v.qte=(+v.qte||0)+1; v.majLe=now(); } await persist(); renderAll(); toast(v?'Bouteille remise en cave · '+v.qte+' en cave':'Sortie annulée'); return v; }
 async function addDeg(d){ S.degustations.push({id:uid(), majLe:now(), ...d}); await persist(); }
 async function saveR(){ R().majLe = now(); await persist(); renderAll(); }
 
@@ -285,13 +288,13 @@ function renderJournal(){ const el=$('#journal'); if(!el) return;
   const perdues=D.filter(d=>/Perdue/.test(d.motif||'')).length;
   const tile=(n,l)=>`<div class="kpi"><b>${esc(n)}</b><span>${esc(l)}</span></div>`;
   let cur=''; const lignes=D.map(d=>{ const k=String(d.date).slice(0,7); let h=''; if(k!==cur){ cur=k; h=`<h3 class="jm">${MOIS[+k.slice(5,7)-1]} ${k.slice(0,4)}</h3>`; } const v=vinOf(d), p=prixRef(v);
-    return h+`<div class="jl" data-vin="${esc(d.vinId||'')}" data-deg="${esc(d.id)}"><span class="jd">${esc(String(d.date).slice(8,10))}</span><div><b>${esc(d.vin||label(v))}</b><small>${esc([d.motif||'Dégustée',d.qui&&'avec '+d.qui,d.quoi&&'sur '+d.quoi].filter(Boolean).join(' · '))}${d.note?' · '+'★'.repeat(+d.note):''}</small>${d.appreciation?`<small><i>${esc(d.appreciation)}</i></small>`:''}</div>${p?`<span class="prix">≈ ${euro(p)}</span>`:''}</div>`; }).join('');
+    return h+`<div class="jl" data-vin="${esc(d.vinId||'')}" data-deg="${esc(d.id)}"><span class="jd">${esc(String(d.date).slice(8,10))}</span><div><b>${esc(d.vin||label(v))}</b><small>${esc([d.motif||'Dégustée',d.qui&&'avec '+d.qui,d.quoi&&'sur '+d.quoi].filter(Boolean).join(' · '))}${d.note?' · '+'★'.repeat(+d.note):''}</small>${d.appreciation?`<small><i>${esc(d.appreciation)}</i></small>`:''}</div>${p?`<span class="prix">≈ ${euro(p)}</span>`:'<span></span>'}<button class="ret" data-ret="${esc(d.id)}" title="Remettre en cave" aria-label="Remettre en cave">↩</button></div>`; }).join('');
   el.innerHTML=`<div class="kpis">${tile(mo.length,'ce mois-ci')}${tile(an.length,'en '+Y)}${tile((D.length/nbMois).toFixed(1).replace('.',','),'par mois en moyenne')}${tile(val?euro(val):'—','valeur sortie')}</div>
   <h2 class="sec">Les 12 derniers mois</h2><div class="mbars">${mois.map(([l,n])=>`<div class="mb"><b>${n||''}</b><i style="height:${Math.round(n/max*100)}%"></i><span>${l}</span></div>`).join('')}</div>
   <div class="grid2"><div><h2 class="sec">Par couleur</h2>${bars(cnt(d=>(TY[vinOf(d).type]||[])[1]))}</div><div><h2 class="sec">Par région</h2>${bars(cnt(d=>(vinOf(d).region||'').split(',')[0]))}</div></div>
   <h2 class="sec">Pourquoi elles sont sorties</h2>${bars(cnt(d=>(d.motif||'Dégustée').replace(/ \(.*\)/,'')))}${perdues?`<p class="warn">${perdues} bouteille${perdues>1?'s':''} perdue${perdues>1?'s':''} : surveillez l’onglet « À boire » pour ne plus en laisser passer.</p>`:''}
   <h2 class="sec">Historique</h2><p class="note">Touchez une ligne pour compléter la date, avec qui, le plat ou votre note.</p><div class="journal">${lignes}</div>`; }
-document.addEventListener('click',e=>{ const l=e.target.closest('.jl[data-deg]'); if(!l) return; if(vins().some(x=>x.id===l.dataset.vin)) openSortie(l.dataset.vin,l.dataset.deg); else toast('Ce vin a été supprimé de la cave'); });
+document.addEventListener('click',async e=>{ const r=e.target.closest('[data-ret]'); if(r){ e.stopPropagation(); const g=S.degustations.find(x=>x.id===r.dataset.ret); if(g&&confirm(`Remettre « ${g.vin||'cette bouteille'} » en cave et effacer cette sortie ?`)) await remettre(r.dataset.ret); return; } const l=e.target.closest('.jl[data-deg]'); if(!l) return; if(vins().some(x=>x.id===l.dataset.vin)) openSortie(l.dataset.vin,l.dataset.deg); else toast('Ce vin a été supprimé de la cave'); });
 
 /* ================= Fiche ================= */
 function openSheet(h){ $('#sb').innerHTML=h; $('#sheet').hidden=false; $('.sheet-in').scrollTop=0; }
@@ -330,8 +333,9 @@ function openSortie(id,degId){ const v=vins().find(x=>x.id===id); const g0=degId
   <label>Servi le<input type="date" name="date" value="${esc(g0.date||today())}"></label><label>Avec qui<input name="qui" value="${esc(g0.qui||'')}"></label><label>Avec quoi<input name="quoi" placeholder="Le plat" value="${esc(g0.quoi||'')}"></label>
   <label style="grid-column:1/-1">Appréciation<textarea name="appreciation" placeholder="Comment était-il ? Prêt, fermé, à son sommet ?">${esc(g0.appreciation||'')}</textarea></label>
   <label>Note<select name="note"><option value="">—</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${+g0.note===n?'selected':''}>${'★'.repeat(n)}</option>`).join('')}</select></label>
-  <div class="row" style="grid-column:1/-1"><button class="btn">Enregistrer</button><button type="button" class="btn sec" id="sBack">Annuler</button></div></form>`);
+  <div class="row" style="grid-column:1/-1"><button class="btn">Enregistrer</button><button type="button" class="btn sec" id="sBack">Annuler</button>${degId?'<button type="button" class="btn sec" id="sRet">↩ Remettre en cave</button>':''}</div>${degId?'<p class="note" style="grid-column:1/-1;margin:0">Pas finalement bue ? « Remettre en cave » annule cette sortie et rajoute la bouteille.</p>':''}</form>`);
   $('#sBack').onclick=()=>openFiche(id);
+  if(degId) $('#sRet').onclick=async()=>{ if(!confirm('Remettre cette bouteille en cave et effacer cette sortie du journal ?')) return; await remettre(degId); openFiche(id); };
   $('#sf').onsubmit=async e=>{ e.preventDefault(); const d=Object.fromEntries(new FormData(e.target)); d.vinId=id; d.vin=label(v)+(v.millesime?' '+v.millesime:'');
     if(degId){ const g=S.degustations.find(x=>x.id===degId); if(g) Object.assign(g,d,{majLe:now()}); await persist(); }
     else { await addDeg(d); await saveVin(id,{qte:Math.max(0,(+v.qte||0)-1)}); }
