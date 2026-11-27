@@ -150,3 +150,7 @@ h1,h2,h3,legend,.qte{font-family:"Cormorant Garamond",Georgia,serif}
 /* remettre en cave v2.0 */
 .jl{grid-template-columns:2.4em minmax(0,1fr) auto auto}
 .jl .ret{border:1px solid var(--line);background:var(--card);color:var(--wine2);border-radius:50%;width:38px;height:38px;font-size:18px;cursor:pointer}
+
+/* barre annuler v2.1 */
+#undo.on{flex-wrap:wrap;row-gap:0}
+#undo.on span{flex:1 1 100%;padding-top:6px}
