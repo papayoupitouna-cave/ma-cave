@@ -148,6 +148,8 @@ function statut(v){ const de=+v.de||0, ap=+v.apogee||0, ju=+v.jusqua||0;
 const isExc = v => v.guideNote==='3' || v.guideCC || prixRef(v) >= (+R().exception||40);
 const isBudget = v => { const p=prixRef(v); return p>0 && p<=(+R().budget||15); };
 (()=>{ const st=document.createElement('style'); st.textContent='.prix{font-size:13px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;background:var(--soft);color:var(--ink)}.prix.p-exc{background:var(--gold);color:#fff}.prix.p-bud{color:var(--ok)}.right{gap:5px}'; document.head.appendChild(st); })();
+const prov=v=>[v.provenance&&v.provenance!=='Achat'?v.provenance:'',v.deQui,v.noteEntree].filter(Boolean).join(' · ');
+function btl(v,big){ const t=TY[v.type]||TY.rouge, eff=t[3]; return `<svg class="btl${big?' big':''}" viewBox="0 0 30 80" aria-hidden="true"><path d="M11 2h8v15c0 4 7 6 7 15v44a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V32c0-9 7-11 7-15z" fill="${t[2]}"/><rect x="4" y="44" width="22" height="17" rx="1" fill="#f6f0e6" opacity=".92"/><rect x="11" y="2" width="8" height="${eff?9:5}" fill="${eff?'#c9a45c':'#3a1420'}"/></svg>`; }
 function prixTag(v,long){ const p=prixRef(v), k=!p?'':p>=(+R().exception||40)?'exc':p<=(+R().budget||15)?'bud':'mid';
   if(long){ const a=+v.prix; return `<span class="prix p-${k}">${p?'Prix moyen ≈ '+euro(p):'Prix à préciser'}${k==='exc'?' · exception':''}</span>${a&&Math.round(a)!==Math.round(p)?` <span class="note">acheté ${euro(a)}</span>`:''}`; }
   return `<span class="prix p-${k}" title="Prix moyen estimé">${p?'≈ '+euro(p):'prix ?'}</span>`; }
@@ -196,8 +198,8 @@ function stats(){ const L=vins(), n=L.reduce((s,v)=>s+(+v.qte||0),0), val=L.redu
 function chips(el,items,cur,cb){ el.innerHTML=items.map(([k,l])=>`<button class="chip${k===cur?' on':''}" data-k="${esc(k)}">${esc(l)}</button>`).join(''); el.onclick=e=>{const b=e.target.closest('.chip'); if(b) cb(b.dataset.k)}; }
 const okImg = s => typeof s==='string' && s.startsWith('data:image/');
 function card(v){ const s=statut(v);
-  return `<div class="card" role="button" tabindex="0" data-id="${esc(v.id)}">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="">`:dot(v)}
-  <div><b>${esc(label(v))}${v.millesime?' '+esc(v.millesime):''}</b><small>${esc([v.appellation,v.region].filter(Boolean).join(' · '))}</small><small>${esc([v.cave,v.emplacement].filter(Boolean).join(' — '))}</small>${v.noteEntree?`<small><i>${esc(v.noteEntree)}</i></small>`:''}</div>
+  return `<div class="card${isExc(v)?' exc':''}" role="button" tabindex="0" data-id="${esc(v.id)}">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="">`:btl(v)}
+  <div><b>${esc(label(v))}${v.millesime?' '+esc(v.millesime):''}</b><small>${esc([v.appellation,v.region].filter(Boolean).join(' · '))}</small><small>${esc([v.cave,v.emplacement].filter(Boolean).join(' — '))}</small>${prov(v)?`<small class="prov">${esc(prov(v))}</small>`:''}</div>
   <div class="right"><div class="qrow"><button class="qb" data-q="-1" data-id="${esc(v.id)}" aria-label="Sortir une bouteille" ${+v.qte?'':'disabled'}>−</button><span class="qte">${+v.qte||0}</span><button class="qb" data-q="1" data-id="${esc(v.id)}" aria-label="Ajouter une bouteille">+</button></div>${prixTag(v)}<span class="badge b-${s.k}">${esc(+v.qte?s.t:'Épuisé')}</span></div></div>`; }
 function renderCave(){ const L0=vins(), caves=[...new Set([...R().caves,...L0.map(v=>v.cave).filter(Boolean)])];
   chips($('#fCave'),[['','Toutes les caves'],...caves.map(c=>[c,c])],f.cave,k=>{f.cave=k;renderCave()});
@@ -226,7 +228,7 @@ function renderR(){ $('#cavesList').innerHTML=R().caves.map(c=>`<span class="chi
   const last=localStorage.getItem('mc_last'); if(last&&!$('#gMsg').textContent) $('#gMsg').textContent='Dernière synchronisation : '+new Date(last).toLocaleString('fr-FR');
   const n=vins().length, linked=localStorage.getItem('mc_linked');
   $('#alerte').innerHTML = n>=3&&!linked ? '<p class="warn">Vos vins ne sont que sur cet appareil. Reliez Google Drive dans Réglages pour ne jamais les perdre.</p>' : ''; }
-function renderAll(){ stats(); renderCave(); renderBoire(); renderR(); }
+function renderAll(){ stats(); renderCave(); renderBoire(); renderR(); renderJournal(); }
 
 /* ================= +1 / −1 et Annuler ================= */
 (()=>{ const st=document.createElement('style'); st.textContent=`.qrow{display:flex;align-items:center;gap:6px}
@@ -247,6 +249,30 @@ async function quick(id,d){ const v=vins().find(x=>x.id===id); if(!v) return; co
     if(degId){ const i=S.degustations.findIndex(y=>y.id===degId); if(i>=0) S.degustations[i]={id:degId,supprime:true,majLe:now()}; } await persist(); renderAll(); open(); toast('Annulé'); }],
     ...(degId?[['Noter',()=>openSortie(id,degId)]]:[])]); }
 
+/* ================= Journal & statistiques ================= */
+const MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+function renderJournal(){ const el=$('#journal'); if(!el) return;
+  const D=degs().filter(d=>d.date).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+  const vinOf=d=>S.vins.find(v=>v.id===d.vinId)||{};
+  if(!D.length){ el.innerHTML='<div class="empty"><h3>Aucune sortie pour l’instant</h3>Chaque bouteille sortie avec le bouton − s’inscrit ici avec sa date. Vos statistiques apparaîtront dès les premières sorties.</div>'; return; }
+  const ym=today().slice(0,7), an=D.filter(d=>String(d.date).startsWith(String(Y))), mo=D.filter(d=>String(d.date).startsWith(ym));
+  const val=D.reduce((s,d)=>s+prixRef(vinOf(d)),0), f0=String(D[D.length-1].date);
+  const nbMois=Math.max(1,(Y-+f0.slice(0,4))*12+(new Date().getMonth()+1)-(+f0.slice(5,7))+1);
+  const mois=[]; for(let i=11;i>=0;i--){ const dt=new Date(); dt.setDate(1); dt.setMonth(dt.getMonth()-i); const k=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0'); mois.push([MOIS[dt.getMonth()].slice(0,3),D.filter(d=>String(d.date).startsWith(k)).length]); }
+  const max=Math.max(1,...mois.map(x=>x[1]));
+  const cnt=f=>{ const o={}; D.forEach(d=>{ const k=f(d); if(k) o[k]=(o[k]||0)+1; }); return Object.entries(o).sort((a,b)=>b[1]-a[1]); };
+  const bars=L=>{ const t=L.reduce((s,x)=>s+x[1],0)||1; return L.slice(0,6).map(([k,n])=>`<div class="hb"><span>${esc(k)}</span><i style="width:${Math.max(4,Math.round(n/t*100))}%"></i><b>${n}</b></div>`).join('')||'<p class="note">—</p>'; };
+  const perdues=D.filter(d=>/Perdue/.test(d.motif||'')).length;
+  const tile=(n,l)=>`<div class="kpi"><b>${esc(n)}</b><span>${esc(l)}</span></div>`;
+  let cur=''; const lignes=D.map(d=>{ const k=String(d.date).slice(0,7); let h=''; if(k!==cur){ cur=k; h=`<h3 class="jm">${MOIS[+k.slice(5,7)-1]} ${k.slice(0,4)}</h3>`; } const v=vinOf(d), p=prixRef(v);
+    return h+`<div class="jl" data-vin="${esc(d.vinId||'')}" data-deg="${esc(d.id)}"><span class="jd">${esc(String(d.date).slice(8,10))}</span><div><b>${esc(d.vin||label(v))}</b><small>${esc([d.motif||'Dégustée',d.qui&&'avec '+d.qui,d.quoi&&'sur '+d.quoi].filter(Boolean).join(' · '))}${d.note?' · '+'★'.repeat(+d.note):''}</small>${d.appreciation?`<small><i>${esc(d.appreciation)}</i></small>`:''}</div>${p?`<span class="prix">≈ ${euro(p)}</span>`:''}</div>`; }).join('');
+  el.innerHTML=`<div class="kpis">${tile(mo.length,'ce mois-ci')}${tile(an.length,'en '+Y)}${tile((D.length/nbMois).toFixed(1).replace('.',','),'par mois en moyenne')}${tile(val?euro(val):'—','valeur sortie')}</div>
+  <h2 class="sec">Les 12 derniers mois</h2><div class="mbars">${mois.map(([l,n])=>`<div class="mb"><b>${n||''}</b><i style="height:${Math.round(n/max*100)}%"></i><span>${l}</span></div>`).join('')}</div>
+  <div class="grid2"><div><h2 class="sec">Par couleur</h2>${bars(cnt(d=>(TY[vinOf(d).type]||[])[1]))}</div><div><h2 class="sec">Par région</h2>${bars(cnt(d=>(vinOf(d).region||'').split(',')[0]))}</div></div>
+  <h2 class="sec">Pourquoi elles sont sorties</h2>${bars(cnt(d=>(d.motif||'Dégustée').replace(/ \(.*\)/,'')))}${perdues?`<p class="warn">${perdues} bouteille${perdues>1?'s':''} perdue${perdues>1?'s':''} : surveillez l’onglet « À boire » pour ne plus en laisser passer.</p>`:''}
+  <h2 class="sec">Historique</h2><p class="note">Touchez une ligne pour compléter la date, avec qui, le plat ou votre note.</p><div class="journal">${lignes}</div>`; }
+document.addEventListener('click',e=>{ const l=e.target.closest('.jl[data-deg]'); if(!l) return; if(vins().some(x=>x.id===l.dataset.vin)) openSortie(l.dataset.vin,l.dataset.deg); else toast('Ce vin a été supprimé de la cave'); });
+
 /* ================= Fiche ================= */
 function openSheet(h){ $('#sb').innerHTML=h; $('#sheet').hidden=false; $('.sheet-in').scrollTop=0; }
 function closeSheet(){ $('#sheet').hidden=true; current=null; }
@@ -256,12 +282,12 @@ function frise(v){ const de=+v.de, ju=+v.jusqua; if(!de||!ju||ju<de) return ''; 
 function dl(rows){ const r=rows.filter(x=>x[1]!==''&&x[1]!==undefined&&x[1]!==null&&x[1]!==false); return r.length?`<dl>${r.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`:'<p class="note">Non renseigné.</p>'; }
 function openFiche(id){ const v=vins().find(x=>x.id===id); if(!v) return closeSheet(); current=id; const s=statut(v), e=v.expert, qq=encodeURIComponent([label(v),v.millesime].filter(Boolean).join(' '));
   const mem=degs().filter(d=>d.vinId===id).sort((a,b)=>String(b.date).localeCompare(a.date));
-  openSheet(`<div class="fiche-h">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="Étiquette">`:''}<div><p class="note" style="margin:0">${dot(v)} ${esc((TY[v.type]||TY.rouge)[1])}${v.format?' · '+esc(v.format):''}</p><h2>${esc(label(v))}</h2><p style="margin:4px 0">${esc([v.millesime,v.appellation,v.region].filter(Boolean).join(' · '))}</p><span class="badge b-${s.k}">${esc(s.t)}</span> ${prixTag(v,true)}</div></div>
+  openSheet(`<div class="fiche-h"><label class="ph" title="Photo de la bouteille">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="Étiquette">`:btl(v,true)}<input type="file" accept="image/*" id="fPhoto" hidden><span>${okImg(v.photo)?'Changer':'+ Photo'}</span></label><div><p class="note" style="margin:0">${dot(v)} ${esc((TY[v.type]||TY.rouge)[1])}${v.format?' · '+esc(v.format):''}</p><h2>${esc(label(v))}</h2><p style="margin:4px 0">${esc([v.millesime,v.appellation,v.region].filter(Boolean).join(' · '))}</p><span class="badge b-${s.k}">${esc(s.t)}</span> ${prixTag(v,true)}</div></div>
   <div class="stepper"><button class="qb big" data-q="-1" data-id="${esc(id)}" aria-label="Sortir une bouteille" ${+v.qte?'':'disabled'}>−</button><div style="text-align:center;flex:1"><span class="qte">${+v.qte||0}</span><br><span class="note">bouteille${(+v.qte||0)>1?'s':''} en cave</span></div><button class="qb big" data-q="1" data-id="${esc(id)}" aria-label="Ajouter une bouteille">+</button></div><p class="note" style="text-align:center;margin:-4px 0 8px">− quand vous en buvez une · + quand vous en rachetez · <button class="lnk" id="fNoter">sortir avec des notes</button></p>
   ${frise(v)}
   <div class="row"><button class="btn ghost" id="fEdit">Modifier</button><button class="btn ghost" id="fDup">Dupliquer</button><button class="btn" id="fExp">${e?'Mettre à jour la fiche Claude':'Fiche Claude'}</button></div>
   <fieldset><legend>Identité</legend>${dl([['Producteur',v.producteur],['Cépages',v.cepages],['Degré',v.degre?v.degre+' %':'']])}</fieldset>
-  <fieldset><legend>Achat</legend>${dl([['Lieu',v.lieuAchat],['Date',v.dateAchat],['Prix',v.prix?euro(v.prix):''],['Contact',v.contact],['Note',v.noteEntree]])}</fieldset>
+  <fieldset><legend>Achat</legend>${dl([['Lieu',v.lieuAchat],['Date',v.dateAchat],['Prix',v.prix?euro(v.prix):''],['Contact',v.contact],['Provenance',[v.provenance,v.deQui].filter(Boolean).join(' — ')],['Note',v.noteEntree]])}</fieldset>
   <fieldset><legend>Gestion</legend>${dl([['Cave',v.cave],['Emplacement',v.emplacement],['À boire',[v.de&&'dès '+v.de,v.apogee&&'apogée '+v.apogee,v.jusqua&&'jusqu’en '+v.jusqua].filter(Boolean).join(' · ')],['Entrées',v.qteEntree],['Service',[v.temp,v.carafe].filter(Boolean).join(' — ')],['Accords',v.accords]])}</fieldset>
   <fieldset><legend>Dégustation</legend>${dl([['Guide Hachette',(v.guideNote?GUIDE[v.guideNote]:'')+(v.guideCC?' ♥ coup de cœur':'')+(v.guideEdition?' (éd. '+v.guideEdition+')':'')],['Commentaire du Guide',v.guideComment],['Ma note',v.maNote?'★'.repeat(+v.maNote):''],['Mes commentaires',v.mesComments]])}</fieldset>
   ${e?`<div class="expert"><h3 style="font-size:24px">L’avis du caviste</h3><p class="note">Fiche du ${esc(e.date||'')}${e.fiabilite?' · fiabilité '+esc(e.fiabilite):''}</p>
@@ -272,16 +298,17 @@ function openFiche(id){ const v=vins().find(x=>x.id===id); if(!v) return closeSh
   <div class="links"><span class="note">En ligne :</span><a href="https://www.wine-searcher.com/find/${qq}" target="_blank" rel="noopener">Prix (Wine-Searcher)</a><a href="https://www.vivino.com/search/wines?q=${qq}" target="_blank" rel="noopener">Avis (Vivino)</a><a href="https://www.google.com/search?q=${qq}+site%3Ahachette-vins.com" target="_blank" rel="noopener">Guide Hachette</a><a href="https://www.google.com/search?q=${qq}+accords+mets+vins" target="_blank" rel="noopener">Accords</a></div>
   <fieldset><legend>Mémoire gourmande</legend>${mem.length?mem.map(d=>`<div class="memo"><b>${esc(d.date)}</b> <small>${esc(d.motif||'Dégustée')}</small>${d.note?' '+'★'.repeat(+d.note):''}<br>${esc([d.qui&&'avec '+d.qui,d.quoi&&'sur '+d.quoi].filter(Boolean).join(', '))}${d.appreciation?`<br><small>${esc(d.appreciation)}</small>`:''}</div>`).join(''):'<p class="note">Aucune bouteille ouverte pour l’instant.</p>'}</fieldset>
   <button class="btn danger" id="fDel" style="margin-top:18px">Supprimer la fiche (erreur de saisie)</button>`);
-  $('#fNoter').onclick=()=>openSortie(id); $('#fEdit').onclick=()=>openForm(v);
+  $('#fNoter').onclick=()=>openSortie(id);
+  $('#fPhoto').onchange=async e=>{ const fl=e.target.files[0]; if(!fl) return; try{ await saveVin(id,{photo:await vignette(fl)}); toast('Photo enregistrée'); openFiche(id); }catch(er){ toast(er.message); } }; $('#fEdit').onclick=()=>openForm(v);
   $('#fDup').onclick=()=>{ const c={...v}; delete c.id; delete c.creeLe; c.millesime=''; c.emplacement=''; openForm(c,'Dupliquer : changez le millésime, la quantité ou l’emplacement'); };
   $('#fExp').onclick=()=>openClaude([v]);
   $('#fDel').onclick=()=>{ const b=$('#fDel'); if(b.dataset.ok){ const before=JSON.parse(JSON.stringify(S.vins.find(x=>x.id===id))), dsv=S.degustations.filter(d=>d.vinId===id).map(d=>JSON.parse(JSON.stringify(d))); closeSheet(); delVin(id).then(()=>undoBar('Fiche supprimée',[['Annuler',async()=>{ const t=now(); const i=S.vins.findIndex(x=>x.id===id); S.vins[i]={...before,majLe:t}; for(const d of dsv){ const j=S.degustations.findIndex(x=>x.id===d.id); if(j>=0) S.degustations[j]={...d,majLe:t}; } await persist(); renderAll(); toast('Fiche restaurée'); }]])); } else { b.dataset.ok=1; b.textContent=`Oui, effacer définitivement la fiche${+v.qte?' et ses '+(+v.qte)+' bouteille'+(+v.qte>1?'s':''):''}`; const w=document.createElement('p'); w.className='warn'; w.textContent='Pour une bouteille bue, utilisez plutôt le bouton −. Supprimer efface la fiche entière et son historique.'; b.before(w); } }; }
-function openSortie(id,degId){ const v=vins().find(x=>x.id===id);
+function openSortie(id,degId){ const v=vins().find(x=>x.id===id); const g0=degId?(S.degustations.find(x=>x.id===degId)||{}):{};
   openSheet(`<h2 style="font-size:30px">${degId?'Noter cette bouteille':'Sortir une bouteille'}</h2><p class="lead">${esc(label(v))} ${esc(v.millesime||'')} — reste ${+v.qte||0}</p>
-  <form id="sf" class="grid2"><label>Motif<select name="motif"><option>Dégustée</option><option>Offerte</option><option>Vendue</option><option>Perdue (bouchonnée, cassée…)</option></select></label>
-  <label>Servi le<input type="date" name="date" value="${today()}"></label><label>Avec qui<input name="qui"></label><label>Avec quoi<input name="quoi" placeholder="Le plat"></label>
-  <label style="grid-column:1/-1">Appréciation<textarea name="appreciation" placeholder="Comment était-il ? Prêt, fermé, à son sommet ?"></textarea></label>
-  <label>Note<select name="note"><option value="">—</option>${[1,2,3,4,5].map(n=>`<option value="${n}">${'★'.repeat(n)}</option>`).join('')}</select></label>
+  <form id="sf" class="grid2"><label>Motif<select name="motif">${['Dégustée','Offerte','Vendue','Perdue (bouchonnée, cassée…)'].map(o=>`<option ${g0.motif===o?'selected':''}>${o}</option>`).join('')}</select></label>
+  <label>Servi le<input type="date" name="date" value="${esc(g0.date||today())}"></label><label>Avec qui<input name="qui" value="${esc(g0.qui||'')}"></label><label>Avec quoi<input name="quoi" placeholder="Le plat" value="${esc(g0.quoi||'')}"></label>
+  <label style="grid-column:1/-1">Appréciation<textarea name="appreciation" placeholder="Comment était-il ? Prêt, fermé, à son sommet ?">${esc(g0.appreciation||'')}</textarea></label>
+  <label>Note<select name="note"><option value="">—</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${+g0.note===n?'selected':''}>${'★'.repeat(n)}</option>`).join('')}</select></label>
   <div class="row" style="grid-column:1/-1"><button class="btn">Enregistrer</button><button type="button" class="btn sec" id="sBack">Annuler</button></div></form>`);
   $('#sBack').onclick=()=>openFiche(id);
   $('#sf').onsubmit=async e=>{ e.preventDefault(); const d=Object.fromEntries(new FormData(e.target)); d.vinId=id; d.vin=label(v)+(v.millesime?' '+v.millesime:'');
@@ -294,7 +321,7 @@ const inp=(k,l,v,t='text',x='')=>`<label>${l}<input name="${k}" type="${t}" valu
 function openForm(v={},titre){ v={type:'rouge',format:'75 cl',qte:1,cave:R().derniereCave||R().caves[0],...v}; const id=v.id;
   const prev=k=>[...new Set(vins().map(x=>x[k]).filter(Boolean))];
   openSheet(`<h2 style="font-size:30px">${id?'Modifier le vin':'Nouveau vin'}</h2>${titre?`<p class="lead">${esc(titre)}</p>`:''}
-  <form id="vf">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="Étiquette" style="width:90px;border-radius:10px">`:''}<fieldset><legend>Identité du vin</legend>
+  <form id="vf"><label class="ph" style="justify-items:start">${okImg(v.photo)?`<img src="${esc(v.photo)}" alt="Étiquette">`:btl(v,true)}<input type="file" accept="image/*" id="vfPhoto" hidden><span>${okImg(v.photo)?'Changer la photo':'+ Photo de la bouteille (facultatif)'}</span></label><fieldset><legend>Identité du vin</legend>
   <div class="types">${TYPES.map(t=>`<label><input type="radio" name="type" value="${t[0]}" ${v.type===t[0]?'checked':''}><span class="dot${t[3]?' eff':''}" style="background:${t[2]}"></span>${t[1]}</label>`).join('')}</div>
   <div class="grid2">${inp('nom','Nom du vin / domaine *',v.nom,'text','required list="dlNom"')}${inp('cuvee','Cuvée',v.cuvee)}${inp('millesime','Millésime',v.millesime,'number')}${inp('producteur','Producteur',v.producteur,'text','list="dlProd"')}
   ${inp('appellation','Appellation',v.appellation,'text','list="dlApp" id="fApp"')}${inp('region','Région / Pays',v.region,'text','id="fReg"')}${inp('cepages','Cépages',v.cepages)}
@@ -313,23 +340,24 @@ function openForm(v={},titre){ v={type:'rouge',format:'75 cl',qte:1,cave:R().der
   ${inp('degre','Degré (%)',v.degre,'number')}${inp('temp','Température de service',v.temp)}${inp('carafe','Carafage',v.carafe)}${inp('accords','Accords',v.accords)}</div>
   <label style="margin-top:12px">Commentaires du Guide<textarea name="guideComment">${esc(v.guideComment||'')}</textarea></label>
   <label style="margin-top:12px">Mes commentaires<textarea name="mesComments">${esc(v.mesComments||'')}</textarea></label></details>
-  <label style="margin-top:16px">Petite note (facultatif)<input name="noteEntree" value="${esc(v.noteEntree||'')}" placeholder="Ex. offert par Marie pour mes 50 ans"></label>
+  <fieldset><legend>Provenance (facultatif)</legend><div class="grid2"><label>Comment je l’ai eu<select name="provenance">${['','Achat','Cadeau','Héritage','Échange','Gagné / concours','Autre'].map(o=>`<option value="${o}" ${(v.provenance||'')===o?'selected':''}>${o||'—'}</option>`).join('')}</select></label>${inp('deQui','De qui / où (ex. Marie, caviste de Lyon)',v.deQui)}</div><label>Petite note<input name="noteEntree" value="${esc(v.noteEntree||'')}" placeholder="Ex. pour mes 50 ans"></label></fieldset>
   <div class="row" style="margin-top:18px"><button class="btn">Enregistrer</button>${id?'':'<button type="button" class="btn sec" id="saveSim">Enregistrer et saisir un similaire</button>'}</div></form>`);
   $('#fApp').addEventListener('change',()=>{ const a=APP[$('#fApp').value.trim()]; if(!a) return; if(!$('#fReg').value) $('#fReg').value=a[0];
     if(!id&&!v.typeManuel){ const r=document.querySelector(`#vf [name=type][value="${a[1]}"]`); if(r) r.checked=true; } });
   document.querySelectorAll('#vf [name=type]').forEach(r=>r.addEventListener('change',()=>v.typeManuel=true));
   const go=async sim=>{ const fm=$('#vf'); if(!fm.reportValidity()) return; const d={};
     for(const el of fm.querySelectorAll('[name]')){ if(el.type==='radio'){ if(el.checked) d[el.name]=el.value; } else if(el.type==='checkbox') d[el.name]=el.checked; else if(el.type==='number') d[el.name]=num(el.value); else d[el.name]=el.value.trim(); }
-    d.qte=Math.max(0,parseInt(d.qte)||0); if(!id){ d.qteEntree=d.qte; if(v.photo) d.photo=v.photo; if(v.expert) d.expert=v.expert; }
+    d.qte=Math.max(0,parseInt(d.qte)||0); if(v.photo) d.photo=v.photo; if(!id){ d.qteEntree=d.qte; if(v.photo) d.photo=v.photo; if(v.expert) d.expert=v.expert; }
     if(d.cave&&!R().caves.includes(d.cave)) R().caves.push(d.cave); if(R().derniereCave!==d.cave){ R().derniereCave=d.cave; R().majLe=now(); }
     const nid=await saveVin(id,d); toast(id?'Fiche mise à jour':'Vin ajouté à la cave');
     if(sim){ const c={...d}; delete c.photo; delete c.expert; c.millesime=''; c.qte=1; c.emplacement=''; openForm(c,'Même vin : changez le millésime, la quantité ou l’emplacement'); } else openFiche(nid); };
-  $('#vf').onsubmit=e=>{ e.preventDefault(); go(false); }; const s=$('#saveSim'); if(s) s.onclick=()=>go(true); }
+  $('#vf').onsubmit=e=>{ e.preventDefault(); go(false); };
+  $('#vfPhoto').onchange=async e=>{ const fl=e.target.files[0]; if(!fl) return; try{ v.photo=await vignette(fl); const ph=e.target.closest('.ph'); ph.querySelector('img,svg').outerHTML=`<img src="${v.photo}" alt="">`; ph.querySelector('span').textContent='Changer la photo'; }catch(er){ toast(er.message); } }; const s=$('#saveSim'); if(s) s.onclick=()=>go(true); }
 
 /* ================= Photo ================= */
 function vignette(file){ return new Promise((ok,ko)=>{ const url=URL.createObjectURL(file), img=new Image();
-  img.onload=()=>{ const m=320, s=Math.min(1,m/Math.max(img.width,img.height)), c=document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
-    c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg',.72)); };
+  img.onload=()=>{ const m=480, s=Math.min(1,m/Math.max(img.width,img.height)), c=document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url); ok(c.toDataURL('image/jpeg',.78)); };
   img.onerror=()=>ko(new Error('Image illisible')); img.src=url; }); }
 
 /* ================= Claude (hors appli) ================= */
@@ -356,8 +384,8 @@ async function importerFiches(t){ const a=t.indexOf('{'), b=t.lastIndexOf('}'); 
   await persist(); renderAll(); return n; }
 
 /* ================= Fichiers ================= */
-const COLS=['nom','cuvee','millesime','type','producteur','appellation','region','cepages','format','degre','cave','emplacement','qte','prix','dateAchat','lieuAchat','contact','de','apogee','jusqua','guideNote','guideCC','guideEdition','guideComment','maNote','mesComments','temp','carafe','accords','noteEntree'];
-const ENTETES={nom:'Nom',cuvee:'Cuvée',millesime:'Millésime',type:'Couleur',producteur:'Producteur',appellation:'Appellation',region:'Région',cepages:'Cépages',format:'Format',degre:'Degré',cave:'Cave',emplacement:'Emplacement',qte:'Quantité',prix:'Prix',dateAchat:'Date achat',lieuAchat:'Lieu achat',contact:'Contact',de:'Boire dès',apogee:'Apogée',jusqua:'Boire jusqu’en',guideNote:'Note Guide',guideCC:'Coup de cœur',guideEdition:'Édition Guide',guideComment:'Commentaire Guide',maNote:'Ma note',mesComments:'Mes commentaires',temp:'Température',carafe:'Carafage',accords:'Accords',noteEntree:'Note'};
+const COLS=['nom','cuvee','millesime','type','producteur','appellation','region','cepages','format','degre','cave','emplacement','qte','prix','dateAchat','lieuAchat','contact','de','apogee','jusqua','guideNote','guideCC','guideEdition','guideComment','maNote','mesComments','temp','carafe','accords','noteEntree','provenance','deQui'];
+const ENTETES={nom:'Nom',cuvee:'Cuvée',millesime:'Millésime',type:'Couleur',producteur:'Producteur',appellation:'Appellation',region:'Région',cepages:'Cépages',format:'Format',degre:'Degré',cave:'Cave',emplacement:'Emplacement',qte:'Quantité',prix:'Prix',dateAchat:'Date achat',lieuAchat:'Lieu achat',contact:'Contact',de:'Boire dès',apogee:'Apogée',jusqua:'Boire jusqu’en',guideNote:'Note Guide',guideCC:'Coup de cœur',guideEdition:'Édition Guide',guideComment:'Commentaire Guide',maNote:'Ma note',mesComments:'Mes commentaires',temp:'Température',carafe:'Carafage',accords:'Accords',noteEntree:'Note',provenance:'Provenance',deQui:'De qui / où'};
 const cell=x=>{ x=x===undefined||x===null||x===false?'':x===true?'oui':String(x); return /[";\n\r]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x; };
 function csv(){ return [COLS.map(k=>ENTETES[k]).join(';'),...vins().map(v=>COLS.map(k=>k==='type'?(TY[v[k]]||[])[1]:k==='guideNote'?(v[k]?GUIDE[v[k]]:''):v[k]).map(cell).join(';'))].join('\n'); }
 function parseCsv(t){ t=t.replace(/^﻿/,''); const sep=(t.split('\n')[0].match(/;/g)||[]).length>=(t.split('\n')[0].match(/,/g)||[]).length?';':','; const rows=[]; let row=[],c='',q=false;
@@ -382,7 +410,7 @@ async function importCsv(file){ const rows=parseCsv(await file.text()); if(rows.
 function telecharger(nom, texte, type){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([texte],{type})); a.download=nom; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000); }
 
 /* ================= Navigation et événements ================= */
-const VIEWS=['cave','boire','ajout','reglages'];
+const VIEWS=['cave','boire','ajout','journal','reglages'];
 function show(v){ if(!VIEWS.includes(v)) v='cave'; document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v)); document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.v===v)); if(location.hash!=='#'+v) history.replaceState(null,'','#'+v); scrollTo(0,0); if(v==='boire') occasion(); }
 document.querySelector('.tabs').onclick=e=>{ const b=e.target.closest('button'); if(b) show(b.dataset.v); };
 addEventListener('hashchange',()=>show(location.hash.slice(1)));
