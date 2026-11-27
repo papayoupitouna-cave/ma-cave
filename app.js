@@ -34,6 +34,7 @@ const PT_RX=/portugal|douro|duriense|d[ãa]o\b|alentejo|vinho verde|bairrada|lis
 function pays(v){ const r=String(v.region||''), i=r.lastIndexOf(','); if(i>=0) return r.slice(i+1).trim(); if(PT_RX.test(r+' '+(v.appellation||''))) return 'Portugal'; if(/france/i.test(r)||APP[v.appellation]) return 'France'; return r.trim()?r.trim():'France'; }
 const isPT=v=>/portugal/i.test(pays(v))||PT_RX.test((v.region||'')+' '+(v.appellation||''));
 const isEtr=v=>!isPT(v)&&!/^france$/i.test(pays(v));
+const isFR=v=>!isPT(v)&&!isEtr(v);
 const theoR=()=>R().theo||DEF_R.theo;
 const theoDef=v=>+v.millesime===+theoR().annee;
 const inTheo=v=>v.theo===true||(v.theo!==false&&theoDef(v));
@@ -221,11 +222,11 @@ function card(v){ const s=statut(v);
   <div><b>${esc(label(v))}${v.millesime?' '+esc(v.millesime):''}</b><small>${esc([v.appellation,v.region].filter(Boolean).join(' · '))}</small><small>${esc([v.cave,v.emplacement].filter(Boolean).join(' — '))}</small>${prov(v)?`<small class="prov">${esc(prov(v))}</small>`:''}${inTheo(v)?`<small class="theo">✦ ${esc(theoTxt(v))}</small>`:''}</div>
   <div class="right"><div class="qrow"><button class="qb" data-q="-1" data-id="${esc(v.id)}" aria-label="Sortir une bouteille" ${+v.qte?'':'disabled'}>−</button><span class="qte">${+v.qte||0}</span><button class="qb" data-q="1" data-id="${esc(v.id)}" aria-label="Ajouter une bouteille">+</button></div>${prixTag(v)}<span class="badge b-${s.k}">${esc(+v.qte?s.t:'Épuisé')}</span></div></div>`; }
 function renderCave(){ const L0=vins(), caves=[...new Set([...R().caves,...L0.map(v=>v.cave).filter(Boolean)])];
-  chips($('#fCave'),[['','Toutes les caves'],...caves.map(c=>[c,c]),...(L0.some(inTheo)?[['__theo','✦ '+theoR().prenom+' '+theoR().annee]]:[]),...(L0.some(isPT)?[['__pt','Vins portugais ('+L0.filter(v=>isPT(v)&&+v.qte>0).reduce((s,v)=>s+(+v.qte||0),0)+')']]:[]),...(L0.some(isEtr)?[['__etr','Vins étrangers ('+L0.filter(v=>isEtr(v)&&+v.qte>0).reduce((s,v)=>s+(+v.qte||0),0)+')']]:[])],f.cave,k=>{f.cave=k;renderCave()});
+  chips($('#fCave'),[['','Toutes les caves'],...caves.map(c=>[c,c]),...(L0.some(inTheo)?[['__theo','✦ '+theoR().prenom+' '+theoR().annee]]:[]),...(L0.some(isFR)?[['__fr','Vins français ('+L0.filter(v=>isFR(v)&&+v.qte>0).reduce((s,v)=>s+(+v.qte||0),0)+')']]:[]),...(L0.some(isPT)?[['__pt','Vins portugais ('+L0.filter(v=>isPT(v)&&+v.qte>0).reduce((s,v)=>s+(+v.qte||0),0)+')']]:[]),...(L0.some(isEtr)?[['__etr','Vins étrangers ('+L0.filter(v=>isEtr(v)&&+v.qte>0).reduce((s,v)=>s+(+v.qte||0),0)+')']]:[])],f.cave,k=>{f.cave=k;renderCave()});
   chips($('#fType'),[['','Toutes couleurs'],...TYPES.map(t=>[t[0],t[1]])],f.type,k=>{f.type=k;renderCave()});
   chips($('#fStat'),[['','Tous'],['urg','À boire vite'],['apogee','Apogée'],['pret','Prêts'],['attendre','À attendre'],['exc','Exception'],['vide','Épuisés']],f.stat,k=>{f.stat=k;renderCave()});
   const q=$('#q').value.trim().toLowerCase(), tri=$('#tri').value;
-  let L=L0.filter(v=>(!f.cave||(f.cave==='__theo'?inTheo(v):f.cave==='__pt'?isPT(v):f.cave==='__etr'?isEtr(v):v.cave===f.cave))&&(!f.type||v.type===f.type));
+  let L=L0.filter(v=>(!f.cave||(f.cave==='__theo'?inTheo(v):f.cave==='__fr'?isFR(v):f.cave==='__pt'?isPT(v):f.cave==='__etr'?isEtr(v):v.cave===f.cave))&&(!f.type||v.type===f.type));
   if(f.stat==='vide') L=L.filter(v=>!(+v.qte)); else { L=L.filter(v=>+v.qte>0); if(f.stat==='urg') L=L.filter(v=>statut(v).o<=1); else if(f.stat==='exc') L=L.filter(isExc); else if(f.stat) L=L.filter(v=>statut(v).k===f.stat); }
   if(q) L=L.filter(v=>[v.nom,v.cuvee,v.producteur,v.appellation,v.region,v.cepages,v.millesime,v.emplacement,v.lieuAchat].join(' ').toLowerCase().includes(q));
   const by={urgence:(a,b)=>statut(a).o-statut(b).o||(+a.jusqua||9999)-(+b.jusqua||9999),nom:(a,b)=>label(a).localeCompare(label(b),'fr'),mill:(a,b)=>(+a.millesime||0)-(+b.millesime||0),prix:(a,b)=>prixRef(b)-prixRef(a),qte:(a,b)=>(+b.qte||0)-(+a.qte||0)};
