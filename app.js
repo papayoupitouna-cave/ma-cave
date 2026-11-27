@@ -54,6 +54,8 @@ function merge(other){
   S.vins = mergeArr(S.vins, other.vins);
   S.degustations = mergeArr(S.degustations, other.degustations);
   if(other.reglages && String(other.reglages.majLe||'') > String(R().majLe||'')) S.reglages = {...DEF_R, ...other.reglages};
+  let nph=0; if(other.photos&&typeof other.photos==='object') for(const [id,ph] of Object.entries(other.photos)){ const v=S.vins.find(x=>x.id===id&&!x.supprime); if(v&&!okImg(v.photo)&&okImg(ph)){ v.photo=ph; v.majLe=now(); nph++; } }
+  return nph;
 }
 const payload = () => ({app:'ma-cave', version:1, date:now(), reglages:S.reglages, vins:S.vins, degustations:S.degustations});
 
@@ -119,13 +121,14 @@ const Sync = {
     }finally{ this.busy=false; }
   },
   async boite(){ // fichiers ma-cave-ajout*.json déposés par votre caviste dans Drive
-    try{ const q=encodeURIComponent("name contains 'ma-cave-ajout' and trashed=false");
+    try{ const q=encodeURIComponent("(name contains 'ma-cave-ajout' or name contains 'ma-cave-photos') and trashed=false");
       const j=await (await this.api(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive&fields=files(id,name)&pageSize=200`)).json();
-      const deja=new Set(R().importes||[]); let nouv=0, vus=0;
+      const deja=new Set(R().importes||[]); let nouv=0, vus=0, nph=0;
       for(const fi of j.files||[]){ if(deja.has(fi.id)) continue;
-        try{ const o=JSON.parse(await (await this.api(`https://www.googleapis.com/drive/v3/files/${fi.id}?alt=media`)).text()); if(o&&Array.isArray(o.vins)){ const avant=vins().length; merge(o); nouv+=vins().length-avant; } deja.add(fi.id); vus++; }catch(e){ if(e.message==='reconnect') throw e; } }
+        try{ const o=JSON.parse(await (await this.api(`https://www.googleapis.com/drive/v3/files/${fi.id}?alt=media`)).text()); if(o&&(Array.isArray(o.vins)||o.photos)){ const avant=vins().length; nph+=merge(o)||0; nouv+=vins().length-avant; } deja.add(fi.id); vus++; }catch(e){ if(e.message==='reconnect') throw e; } }
       if(vus){ R().importes=[...deja]; R().majLe=now(); }
       if(nouv) setTimeout(()=>toast(nouv+' vin'+(nouv>1?'s':'')+' ajouté'+(nouv>1?'s':'')+' par votre caviste'),300);
+      if(nph) setTimeout(()=>toast(nph+' photo'+(nph>1?'s':'')+' de bouteille ajoutée'+(nph>1?'s':'')),nouv?2600:300);
     }catch(e){ if(e.message==='reconnect') throw e; } },
   async sheet(){
     if(!this.valid()) await this.connect();
@@ -441,9 +444,9 @@ $('#dCsv').onclick=()=>telecharger(`ma-cave-${today()}.csv`,'﻿'+csv(),'text/cs
 $('#share').onclick=async()=>{ const fl=new File([JSON.stringify(payload())],`ma-cave-sauvegarde-${today()}.json`,{type:'application/json'});
   if(navigator.canShare&&navigator.canShare({files:[fl]})){ try{ await navigator.share({files:[fl],title:'Sauvegarde Ma Cave'}); }catch(e){} } else $('#fMsg').textContent='Le partage de fichier n’est pas disponible ici : utilisez « Sauvegarde complète ».'; };
 $('#impF').onchange=async e=>{ const fl=e.target.files[0]; e.target.value=''; if(!fl) return;
-  try{ const j=JSON.parse(await fl.text()); if(!Array.isArray(j.vins)) throw new Error('Fichier non reconnu');
+  try{ const j=JSON.parse(await fl.text()); if(!Array.isArray(j.vins)&&!j.photos) throw new Error('Fichier non reconnu');
     const t=now(); (j.vins||[]).forEach(v=>{ if(!v.majLe) v.majLe=t; }); (j.degustations||[]).forEach(d=>{ if(!d.majLe) d.majLe=t; });
-    const avant=vins().length; merge(j); await persist(); renderAll(); $('#fMsg').textContent=`Fusion faite : ${vins().length-avant} nouveau(x) vin(s), fiches plus récentes mises à jour.`; }
+    const avant=vins().length; const nph=merge(j)||0; await persist(); renderAll(); Sync.schedule&&Sync.schedule(); $('#fMsg').textContent=`Fusion faite : ${vins().length-avant} nouveau(x) vin(s)${nph?', '+nph+' photo(s)':''}, fiches plus récentes mises à jour.`; }
   catch(er){ $('#fMsg').textContent='Restauration impossible : '+er.message; } };
 addEventListener('online',()=>Sync.sync());
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ const l=localStorage.getItem('mc_last'); if(!l||Date.now()-new Date(l)>60000) Sync.sync(); } });
